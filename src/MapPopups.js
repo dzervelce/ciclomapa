@@ -402,14 +402,14 @@ class MapPopups {
     const titleHtml = properties.name
       ? escapeHtml(properties.name)
       : poiType === 'poi-bikeparking'
-        ? '<span>Bicicletário/paraciclo</span>'
+        ? '<span>Velo novietne</span>'
         : `<span class="font-medium italic opacity-50">${poiTypeMapFallback[poiType]}</span>`;
 
     const addressClassesBase =
       'mt-1 sm:mt-0 text-xs md:text-sm break-words opacity-60 leading-snug';
     const addressAttrs = addressFromOsm
       ? 'data-poi-address-slot'
-      : 'data-poi-address-slot data-poi-address-pending aria-busy="true" aria-label="Carregando endereço"';
+      : 'data-poi-address-slot data-poi-address-pending aria-busy="true" aria-label="Ielādē adresi"';
     const addressInner = addressFromOsm
       ? escapeHtml(addressFromOsm)
       : `<span class="poi-popup-address-skeleton" aria-hidden="true">

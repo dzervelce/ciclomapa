@@ -243,7 +243,7 @@ class LayersLegendModal extends Component {
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        aria-label="Legenda do mapa"
+        aria-label="Kartes leģenda"
         className={`
                     app-modal-root fixed bg-gray-800 text-gray-100 antialiased overflow-hidden
                     bottom-0 left-0 right-0 top-3 rounded-tl-2xl rounded-tr-2xl
@@ -266,13 +266,13 @@ class LayersLegendModal extends Component {
             <div className="sticky top-0 z-20 px-3 pt-4 pb-3 bg-gray-800">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold tracking-tight text-white my-0 md:text-2xl">
-                  Legenda
+                  Leģenda
                 </h2>
                 <Button
                   type="text"
                   onClick={onClose}
                   shape="circle"
-                  aria-label="Fechar legenda"
+                  aria-label="Aizvērt leģendu"
                   className="text-gray-300 hover:text-white"
                 >
                   <HiOutlineXMark className="text-2xl" aria-hidden />
@@ -290,7 +290,7 @@ class LayersLegendModal extends Component {
                     onClick={() => this.scrollToSection('vias-ciclaveis-section')}
                     className={legendNavTabClass('vias-ciclaveis-section')}
                   >
-                    Vias cicláveis
+                    Velo ceļi
                   </Button>
                 )}
                 {pontosLayers.length > 0 && (
@@ -302,7 +302,7 @@ class LayersLegendModal extends Component {
                     onClick={() => this.scrollToSection('pontos-section')}
                     className={legendNavTabClass('pontos-section')}
                   >
-                    Pontos de interesse
+                    Interešu vietas
                   </Button>
                 )}
                 {outrasViasLayers.length > 0 && (
@@ -314,7 +314,7 @@ class LayersLegendModal extends Component {
                     onClick={() => this.scrollToSection('outras-vias-section')}
                     className={legendNavTabClass('outras-vias-section')}
                   >
-                    Outras vias
+                    Citi ceļi
                   </Button>
                 )}
                 <Button
@@ -325,7 +325,7 @@ class LayersLegendModal extends Component {
                   onClick={() => this.scrollToSection('routes-section')}
                   className={legendNavTabClass('routes-section')}
                 >
-                  Rotas
+                  Maršruti
                 </Button>
               </div>
             </div>
@@ -336,7 +336,7 @@ class LayersLegendModal extends Component {
                 {/* Vias cicláveis */}
                 {viasCiclaveisLayers.length > 0 && (
                   <div id="vias-ciclaveis-section">
-                    <h3 className="text-xl mb-4 pl-2">Vias cicláveis</h3>
+                    <h3 className="text-xl mb-4 pl-2">Velo ceļi</h3>
                     <div className={categoryContainerClasses}>
                       {viasCiclaveisLayers.map(renderLayer)}
                     </div>
@@ -346,7 +346,7 @@ class LayersLegendModal extends Component {
                 {/* Pontos de Interesse */}
                 {pontosLayers.length > 0 && (
                   <div id="pontos-section">
-                    <h3 className="text-xl mb-4 pl-2">Pontos de interesse</h3>
+                    <h3 className="text-xl mb-4 pl-2">Interešu vietas</h3>
                     <div className={categoryContainerClasses}>
                       {pontosLayers.map(renderLayer)}
                       <div className="rounded-xl border border-white border-opacity-10 bg-gray-900 bg-opacity-80 p-4">
@@ -356,12 +356,12 @@ class LayersLegendModal extends Component {
                           </div>
                           <div className="flex-1 min-w-0">
                             <h3 className="text-base font-semibold leading-snug text-white mb-0 pr-1">
-                              Comentários da comunidade
+                              Sabiedrības komentāri
                             </h3>
                             <p className="text-sm text-gray-400 leading-relaxed mb-0 mt-2">
-                              Enviados por quem usa o CicloMapa, servem para relatar problemas,
-                              sugestões ou observações sobre o local para auxiliar parceiros
-                              editores do OpenStreetMap.
+                              Velokartes lietotāju ievietoti komentāri par konkrētām vietām –
+                              problēmu, ieteikumu vai novērojumu apraksti, kas palīdz OpenStreetMap
+                              redaktoriem.
                             </p>
                           </div>
                         </div>
@@ -373,7 +373,7 @@ class LayersLegendModal extends Component {
                 {/* Outras vias */}
                 {outrasViasLayers.length > 0 && (
                   <div id="outras-vias-section">
-                    <h3 className="text-xl mb-4 pl-2">Outras vias</h3>
+                    <h3 className="text-xl mb-4 pl-2">Citi ceļi</h3>
                     <div className={categoryContainerClasses}>
                       {outrasViasLayers.map(renderLayer)}
                     </div>
@@ -384,11 +384,11 @@ class LayersLegendModal extends Component {
               {/* Route Coverage & Protection Scores Section */}
               <div id="routes-section" className="space-y-8 mb-10">
                 <div>
-                  <h3 className="text-xl mb-4 pl-2">Rotas</h3>
+                  <h3 className="text-xl mb-4 pl-2">Maršruti</h3>
                   <p className="text-sm md:text-base text-gray-300 leading-relaxed mb-0 max-w-prose">
-                    Quando você calcula uma rota, analisamos quantos quilômetros dela estão cobertos
-                    por cada tipo de infraestrutura cicloviária. Cada tipo tem um peso diferente na
-                    nota final, refletindo o nível de proteção e segurança oferecido.
+                    Kad jūs aprēķināt maršrutu, mēs analizējam, cik kilometru tā ir nosegti ar
+                    katra veida velo infrastruktūru. Katram veidam ir atšķirīgs svars galīgajā
+                    vērtējumā, kas atspoguļo aizsardzības un drošības līmeni.
                   </p>
                 </div>
 
@@ -399,13 +399,13 @@ class LayersLegendModal extends Component {
                       <thead>
                         <tr className="border-b border-white border-opacity-15">
                           <th className="pb-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            Tipo
+                            Veids
                           </th>
                           <th className="pb-3 px-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            Proteção
+                            Aizsardzība
                           </th>
                           <th className="pb-3 pl-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            Peso
+                            Svars
                           </th>
                         </tr>
                       </thead>
@@ -458,7 +458,13 @@ class LayersLegendModal extends Component {
                                     {infra.protection === 'Alta' && <IconSignal3 />}
                                     {infra.protection === 'Média' && <IconSignal2 />}
                                     {infra.protection === 'Baixa' && <IconSignal1 />}
-                                    {infra.protection}
+                                    {infra.protection === 'Alta'
+                                      ? 'Augsta'
+                                      : infra.protection === 'Média'
+                                        ? 'Vidēja'
+                                        : infra.protection === 'Baixa'
+                                          ? 'Zema'
+                                          : infra.protection}
                                   </InfrastructureBadge>
                                 )}
                               </td>
@@ -476,7 +482,7 @@ class LayersLegendModal extends Component {
                 </div>
 
                 {/* Visual Examples */}
-                <p className="text-sm font-medium text-gray-400 mb-4">Alguns exemplos</p>
+                <p className="text-sm font-medium text-gray-400 mb-4">Daži piemēri</p>
 
                 {/* <div className="rounded-xl border border-white border-opacity-10 bg-gray-900 bg-opacity-80 p-4 md:p-5"> */}
                 <div>
@@ -494,14 +500,14 @@ class LayersLegendModal extends Component {
                             </div>
                             <div className="flex flex-col min-w-0">
                               <span className="text-sm font-medium text-white mb-2">
-                                Rota 100% protegida
+                                100% aizsargāts maršruts
                               </span>
                               <div className="flex flex-wrap gap-2">
                                 <InfrastructureBadge
                                   infrastructure="ciclovia"
                                   isDarkMode={this.props.isDarkMode}
                                 >
-                                  100% ciclovia
+                                  100% velo ceļš
                                 </InfrastructureBadge>
                               </div>
                             </div>
@@ -532,32 +538,32 @@ class LayersLegendModal extends Component {
                             </div>
                             <div className="flex flex-col min-w-0">
                               <span className="text-sm font-medium text-white mb-2">
-                                Rota mista
+                                Jaukts maršruts
                               </span>
                               <div className="flex flex-wrap gap-2">
                                 <InfrastructureBadge
                                   infrastructure="ciclovia"
                                   isDarkMode={this.props.isDarkMode}
                                 >
-                                  40% ciclovia
+                                  40% velo ceļš
                                 </InfrastructureBadge>
                                 <InfrastructureBadge
                                   infrastructure="ciclofaixa"
                                   isDarkMode={this.props.isDarkMode}
                                 >
-                                  15% ciclofaixa
+                                  15% velojosla
                                 </InfrastructureBadge>
                                 <InfrastructureBadge
                                   infrastructure="ciclorrota"
                                   isDarkMode={this.props.isDarkMode}
                                 >
-                                  15% ciclorrota
+                                  15% velomaršruts
                                 </InfrastructureBadge>
                                 <InfrastructureBadge
                                   infrastructure="rua"
                                   isDarkMode={this.props.isDarkMode}
                                 >
-                                  30% rua
+                                  30% iela
                                 </InfrastructureBadge>
                               </div>
                             </div>
@@ -589,20 +595,20 @@ class LayersLegendModal extends Component {
                             </div>
                             <div className="flex flex-col min-w-0">
                               <span className="text-sm font-medium text-white mb-2">
-                                Rota menos protegida
+                                Mazāk aizsargāts maršruts
                               </span>
                               <div className="flex flex-wrap gap-2">
                                 <InfrastructureBadge
                                   infrastructure="ciclorrota"
                                   isDarkMode={this.props.isDarkMode}
                                 >
-                                  80% ciclorrota
+                                  80% velomaršruts
                                 </InfrastructureBadge>
                                 <InfrastructureBadge
                                   infrastructure="rua"
                                   isDarkMode={this.props.isDarkMode}
                                 >
-                                  20% rua
+                                  20% iela
                                 </InfrastructureBadge>
                               </div>
                             </div>
@@ -624,17 +630,17 @@ class LayersLegendModal extends Component {
 
                 {/* Disclaimer */}
                 <p className="text-sm text-gray-400 leading-relaxed mt-2 mb-0 border-t border-white border-opacity-10 pt-8">
-                  <strong className="font-semibold text-gray-300">Lembre-se:</strong> as rotas são
-                  sugestões automáticas; sempre verifique as condições das vias, sinalização e
-                  segurança antes de pedalar. As notas ajudam a comparar opções, mas não substituem
-                  seu julgamento sobre a segurança real do trajeto.
+                  <strong className="font-semibold text-gray-300">Atcerieties:</strong> maršruti ir
+                  automātiski ieteikumi; pirms braukšanas vienmēr pārbaudiet ceļa apstākļus,
+                  marķējumu un drošību. Vērtējumi palīdz salīdzināt iespējas, bet neaizstāj jūsu
+                  pašu vērtējumu par maršruta reālo drošību.
                 </p>
               </div>
 
               {/* Footer button */}
               <div className="flex justify-center pb-8">
                 <Button className="w-full" type="primary" size="large" onClick={onClose}>
-                  Entendi
+                  Sapratu
                 </Button>
               </div>
             </div>

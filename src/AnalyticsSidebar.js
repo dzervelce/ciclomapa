@@ -74,14 +74,14 @@ const layerShape = PropTypes.shape({
 
 const OpenStreetMapDisclaimer = () => (
   <p className="italic opacity-50">
-    Estes números se baseiam no estado atual do mapeamento colaborativo no OpenStreetMap e não são
-    dados oficiais, podendo não refletir a realidade com precisão.
+    Šie skaitļi balstās uz pašreizējo OpenStreetMap kopējās kartēšanas stāvokli un nav oficiāli
+    dati, tādēļ tie var precīzi neatspoguļot realitāti.
   </p>
 );
 
 const OfficialDisclaimer = () => (
   <p className="italic opacity-50">
-    Estes números são dados oficiais da prefeitura mas podem não refletir a realidade com precisão.
+    Šie skaitļi ir pašvaldības oficiālie dati, bet tie var precīzi neatspoguļot realitāti.
   </p>
 );
 
@@ -430,12 +430,11 @@ class AnalyticsSidebar extends Component {
             description={
               <>
                 <p>
-                  As extensões totais das vias são calculadas automaticamente com base nos dados do
-                  OpenStreetMap.
+                  Ceļu kopējie garumi tiek automātiski aprēķināti, balstoties uz OpenStreetMap datiem.
                 </p>
                 <p>
-                  Para vias que tem estrutura dos dois lados nós desenvolvemos um método que
-                  automaticamente detecta estes casos e remove esta contagem dupla do total.
+                  Ceļiem ar infrastruktūru abās pusēs mēs izmantojam algoritmu, kas automātiski
+                  atpazīst šādus gadījumus un noņem dubultu skaitīšanu no kopsummas.
                 </p>
                 <OpenStreetMapDisclaimer />
               </>
@@ -522,7 +521,7 @@ class AnalyticsSidebar extends Component {
                       )}
                   </>
                 ) : (
-                  <span className="opacity-50">Sem dados</span>
+                  <span className="opacity-50">Nav datu</span>
                 )}
               </div>
             </div>

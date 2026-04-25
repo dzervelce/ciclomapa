@@ -205,9 +205,12 @@ export const MAPBOX_ACCESS_TOKEN = process.env.REACT_APP_MAPBOX_ACCESS_TOKEN;
 
 export const GOOGLE_PLACES_API_KEY = process.env.REACT_APP_GOOGLE_PLACES_API_KEY;
 
-// Mapbox standard styles. Swap to MAPTILER_STYLE_URL or a custom Mapbox
-// Studio style URL if you want a different aesthetic.
+// Velokarte: using cmdalbem's public Mapbox Studio styles (same as the
+// upstream CicloMapa app). Tuned specifically for cycling-map context —
+// building density, label thresholds, simplified road palette. Swap to
+// 'mapbox://styles/mapbox/streets-v12' / 'dark-v11' for stock Mapbox
+// cartography, or to MAPTILER_STYLE_URL for MapTiler tiles.
 export const MAP_STYLES = {
-  DARK: 'mapbox://styles/mapbox/dark-v11',
-  LIGHT: 'mapbox://styles/mapbox/streets-v12',
+  DARK: 'mapbox://styles/cmdalbem/ckgpww8gi2nk619kkl0zrlodm',
+  LIGHT: 'mapbox://styles/cmdalbem/cjxseldep7c0a1doc7ezn6aeb',
 };

@@ -52,7 +52,7 @@ export const osmi18n: Record<string, string | null> = {
    */
 
   // Bike parking
-  covered: 'Klāts?',
+  covered: 'Ar nojumi?',
   access: 'Piekļuve',
   capacity: 'Ietilpība',
   cyclestreets_id: '',
