@@ -15,12 +15,17 @@ function runScript(): Promise<number> {
   return new Promise((resolve) => {
     // Use Bun rather than Node so we don't have to install Node on the VPS;
     // Bun is Node-compatible and resolves require() against NODE_PATH the same way.
+    //
+    // cwd: '/tmp' so the upstream script's intermediate files (latvia.geojson)
+    // land in writable space — /srv/velokarte/backend is owned by `deploy`,
+    // not the `velokarte-api` user that runs this systemd unit.
     const proc = spawn(
       '/usr/local/bin/bun',
       [SCRIPT, '--area', 'Latvia', '--output', OUTPUT_TMP],
       {
         env: { ...process.env, NODE_PATH },
         stdio: 'inherit',
+        cwd: '/tmp',
       }
     );
     proc.on('exit', (code) => resolve(code ?? 1));
