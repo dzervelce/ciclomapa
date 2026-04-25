@@ -1612,6 +1612,20 @@ class Map extends Component {
       map.setStyle(this.props.style);
     }
 
+    // Velokarte: with Mapbox Standard, theme toggles via lightPreset config
+    // (style URL stays the same). isDarkMode change → swap dawn/night preset.
+    if (this.props.isDarkMode !== prevProps.isDarkMode) {
+      try {
+        map.setConfigProperty(
+          'basemap',
+          'lightPreset',
+          this.props.isDarkMode ? 'night' : 'dawn'
+        );
+      } catch (err) {
+        console.warn('[Velokarte] setConfigProperty failed:', err);
+      }
+    }
+
     if (this.props.showSatellite !== prevProps.showSatellite) {
       map.setLayoutProperty(
         'mapbox-satellite',
@@ -2298,17 +2312,14 @@ class Map extends Component {
         container: this.mapContainer,
         style: this.props.style,
         preserveDrawingBuffer: true,
-        // style: MAP_STYLES.LIGHT,
-        // config: {
-        //     basemap: {
-        //         lightPreset: this.props.style === MAP_STYLES.DARK ? "night" : "daytime",
-        //     }
-        // },
+        config: {
+          basemap: {
+            lightPreset: this.props.isDarkMode ? 'night' : 'dawn',
+          },
+        },
         center: [this.props.lng, this.props.lat],
         zoom: this.props.zoom,
         attributionControl: false,
-        // dragRotate: false,
-        // pitchWithRotate: false
       }).addControl(
         new mapboxgl.AttributionControl({
           compact: false,
