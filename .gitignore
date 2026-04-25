@@ -20,3 +20,9 @@ npm-shrinkwrap.json
 *.geojson
 *.pmtiles
 test-results/
+
+# Velokarte: local-only
+CLAUDE.md
+.claude/
+cmdalbem-*-style.json
+velokarte-*-style.json
