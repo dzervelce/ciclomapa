@@ -415,10 +415,10 @@ class App extends Component {
   /** Single document title for sr-only h1 (matches route, not only geocoder area). */
   getSrOnlyDocumentTitle() {
     const slug = this.getCanonicalRouteCitySlug();
-    if (!slug) return 'CicloMapa';
+    if (!slug) return 'Velokarte';
     const loc = getPredefinedCityStaticLocation(slug);
     const primary = loc?.areaLabel?.split(',')[0]?.trim();
-    return primary ? `${primary} — CicloMapa` : 'CicloMapa';
+    return primary ? `${primary} — Velokarte` : 'Velokarte';
   }
 
   getCanonicalCityIdentity(area) {

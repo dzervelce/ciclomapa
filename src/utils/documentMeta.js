@@ -1,9 +1,9 @@
-/** Default SEO copy (aligned with in-app "Sobre" messaging). Keep in sync with public/index.html defaults. */
-export const DEFAULT_PAGE_TITLE = 'CicloMapa';
-const SITE_URL = 'https://ciclomapa.app';
+/** Default SEO copy (aligned with in-app "Par" messaging). Keep in sync with public/index.html defaults. */
+export const DEFAULT_PAGE_TITLE = 'Velokarte';
+const SITE_URL = 'https://velokarte.pocs.dev';
 
 export const DEFAULT_META_DESCRIPTION =
-  'O mapa do ciclista urbano: encontre ciclovias, escolha rotas mais seguras no dia a dia e veja bicicletários e oficinas por perto.';
+  'Latvijas riteņbraucēju karte: atrodiet veloceļus, plānojiet drošākus maršrutus un apskatiet velosipēdu novietnes un servisus tuvumā.';
 
 const MAX_DESCRIPTION_LENGTH = 160;
 
@@ -28,7 +28,7 @@ export function updateDocumentMeta(area, citySlug = null) {
 
   const description = label
     ? truncateDescription(
-        `${label} no CicloMapa: o mapa do ciclista urbano para encontrar ciclovias, escolher rotas mais seguras no dia a dia e ver bicicletários e oficinas por perto.`
+        `${label} Velokartē: riteņbraucēju karte, kurā atrast veloceļus, plānot drošākus maršrutus un apskatīt velo novietnes un servisus tuvumā.`
       )
     : DEFAULT_META_DESCRIPTION;
 
