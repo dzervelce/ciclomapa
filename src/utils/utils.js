@@ -41,21 +41,28 @@ export function createPolygonFromBBox(bbox) {
   };
 }
 
-// Thanks https://medium.com/@mhagemann/the-ultimate-way-to-slugify-a-url-string-in-javascript-b8e4a0d849e1
+/**
+ * Slugify a string for use in URLs and storage keys.
+ *
+ * Velokarte: replaced the upstream's hardcoded character map (which only
+ * covered Romance/Germanic accents) with Unicode NFD-decompose-then-strip,
+ * which handles ALL combining marks generically. Important for Latvian:
+ * `ā ē ī ū ļ ņ ķ ģ š č ž` were getting silently dropped, producing slugs
+ * like `rga-latvija` and `rzekne-latvija`. Now `Rīga, Latvija` → `riga-latvija`.
+ *
+ * Behavior preserved for existing Portuguese/Spanish strings since they
+ * decompose to the same ASCII via NFD normalization.
+ */
 export function slugify(str) {
-  const a = 'àáäâãåăæçèéëêǵḧìíïîḿńǹñòóöôœøṕŕßśșțùúüûǘẃẍÿź·/_,:;';
-  const b = 'aaaaaaaaceeeeghiiiimnnnooooooprssstuuuuuwxyz------';
-  const p = new RegExp(a.split('').join('|'), 'g');
-  return str
-    .toString()
+  return String(str)
+    .normalize('NFD') // decompose accented chars: ī → i + combining macron
+    .replace(/[̀-ͯ]/g, '') // strip all combining marks
     .toLowerCase()
-    .replace(/\s+/g, '-') // Replace spaces with -
-    .replace(p, (c) => b.charAt(a.indexOf(c))) // Replace special characters
-    .replace(/&/g, '-and-') // Replace & with ‘and’
-    .replace(/[^\w-]+/g, '') // Remove all non-word characters
-    .replace(/--+/g, '-') // Replace multiple - with single -
-    .replace(/^-+/, '') // Trim - from start of text
-    .replace(/-+$/, ''); // Trim - from end of text
+    .replace(/[\s·/_,:;]+/g, '-') // separators (space, comma, colon, etc.) → single dash
+    .replace(/&/g, '-and-')
+    .replace(/[^\w-]+/g, '') // strip remaining non-word chars
+    .replace(/--+/g, '-') // collapse runs of dashes
+    .replace(/^-+|-+$/g, ''); // trim leading/trailing dashes
 }
 
 const typeSizes = {
