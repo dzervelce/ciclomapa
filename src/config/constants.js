@@ -215,9 +215,7 @@ export const GOOGLE_PLACES_API_KEY = process.env.REACT_APP_GOOGLE_PLACES_API_KEY
 // + blocked telemetry combo broke cleanly. MapTiler has no equivalent issue.
 // const MAPBOX_DARK  = 'mapbox://styles/edgarsdna/cmoeuk8nk002v01sbfd3858yy';
 // const MAPBOX_LIGHT = 'mapbox://styles/edgarsdna/cmoeukfo6000b01qy1kdq0zbw';
-// Mapbox Standard: same URL for both, theme switches via lightPreset config
-// applied in Map.js based on isDarkMode prop. 'dawn' for light, 'night' for dark.
 export const MAP_STYLES = {
-  DARK: 'mapbox://styles/mapbox/standard',
-  LIGHT: 'mapbox://styles/mapbox/standard',
+  DARK: 'mapbox://styles/edgarsdna/cmoeuk8nk002v01sbfd3858yy',
+  LIGHT: 'mapbox://styles/edgarsdna/cmoeukfo6000b01qy1kdq0zbw',
 };
