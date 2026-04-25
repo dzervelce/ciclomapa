@@ -857,13 +857,15 @@ class Map extends Component {
             'icon-allow-overlap': true,
             'icon-ignore-placement': true,
             'icon-padding': 4,
+            // Velokarte: MapLibre rejects raw arrays inside expressions; must be
+            // wrapped in `['literal', ...]`. Mapbox tolerated both forms.
             'icon-offset': [
               'case',
               ['==', ['get', 'cycleway:right'], 'lane'],
-              [0, 44],
+              ['literal', [0, 44]],
               ['==', ['get', 'cycleway:left'], 'lane'],
-              [0, -44],
-              [0, 0],
+              ['literal', [0, -44]],
+              ['literal', [0, 0]],
             ],
           },
           paint: {
@@ -2602,7 +2604,9 @@ class Map extends Component {
       showZoom: false,
       visualizePitch: true,
     });
-    this.map.addControl(navigationControl, 'right');
+    // Velokarte: MapLibre only accepts top-left/top-right/bottom-left/bottom-right.
+    // 'right' silently failed on Mapbox, throws on MapLibre.
+    this.map.addControl(navigationControl, 'top-right');
 
     const compassControlContainer = navigationControl._container;
     const compassButton = navigationControl._container?.querySelector('.mapboxgl-ctrl-compass');
