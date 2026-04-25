@@ -1,4 +1,4 @@
-import { sql } from 'bun:sql';
+import { sql } from 'bun';
 
 const PORT = Number(process.env.PORT ?? 8080);
 const SLUG_RE = /^[a-z0-9-]{1,128}$/;

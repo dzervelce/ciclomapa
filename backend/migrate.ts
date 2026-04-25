@@ -1,4 +1,4 @@
-import { sql } from 'bun:sql';
+import { sql } from 'bun';
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
