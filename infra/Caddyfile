@@ -1,12 +1,8 @@
 velokarte.pocs.dev {
     encode gzip zstd
 
-    # Static frontend (CRA build output, SPA fallback)
-    root * /srv/velokarte/build
-    file_server
-    try_files {path} /index.html
-
-    # API
+    # API: forward to Bun. Must come before the static-file handle so
+    # PUT/POST aren't intercepted by file_server (which only allows GET/HEAD).
     handle /api/* {
         reverse_proxy localhost:8080
     }
@@ -16,9 +12,13 @@ velokarte.pocs.dev {
         root * /srv/velokarte
         file_server
         header Cache-Control "public, max-age=300"
+        header X-Robots-Tag "noindex, nofollow"
     }
 
-    # Tell crawlers not to hammer our tile path (extra defence;
-    # we also ship robots.txt in /srv/velokarte/build).
-    header /pmtiles/* X-Robots-Tag "noindex, nofollow"
+    # Default: static frontend (SPA fallback)
+    handle {
+        root * /srv/velokarte/build
+        file_server
+        try_files {path} /index.html
+    }
 }
