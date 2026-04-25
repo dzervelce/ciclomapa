@@ -9,7 +9,13 @@ import turfCircle from '@turf/circle';
 import 'mapbox-gl/dist/maplibre-gl.css';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
-import { PmTilesSource } from 'mapbox-pmtiles';
+// Velokarte: PMTiles support deferred. The mapbox-pmtiles package targets
+// Mapbox GL JS (uses Style.setSourceType which doesn't exist on MapLibre).
+// Once we replace it with the standard `pmtiles` library + addProtocol,
+// re-enable this import. Until then, USE_PMTILES_SOURCE in constants.js
+// gates all the call sites below.
+// import { PmTilesSource } from 'mapbox-pmtiles';
+const PmTilesSource = { SOURCE_TYPE: 'pmtile-disabled', getHeader: () => Promise.reject(new Error('PMTiles disabled')) };
 
 import {
   MAPBOX_ACCESS_TOKEN,
@@ -2305,19 +2311,9 @@ class Map extends Component {
 
     mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
-    // Velokarte: mapboxgl is npm-aliased to maplibre-gl, which doesn't have
-    // Style.setSourceType. The proper fix is to use the standard `pmtiles`
-    // library's addProtocol() registration; deferred to a follow-up patch.
-    // Skipping the call lets the rest of the map render (basemap + GeoJSON);
-    // the PMTiles-backed overlay layers just won't show until then.
-    if (typeof mapboxgl.Style?.setSourceType === 'function') {
-      mapboxgl.Style.setSourceType(PmTilesSource.SOURCE_TYPE, PmTilesSource);
-    } else {
-      console.info(
-        '[Velokarte] mapboxgl.Style.setSourceType not available (MapLibre); ' +
-          'PMTiles overlay will not render until protocol-based registration is wired up.'
-      );
-    }
+    // Velokarte: PMTiles source registration is fully disabled here.
+    // See comment on the (commented-out) PmTilesSource import at top of file
+    // and the USE_PMTILES_SOURCE flag in constants.js.
 
     try {
       console.log('Creating Mapbox map...');

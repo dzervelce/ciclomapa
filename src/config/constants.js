@@ -181,7 +181,9 @@ const URL_PARAMS = new URLSearchParams(window.location.search);
 export const FORCE_RECALCULATE_LENGTHS_ALWAYS = URL_PARAMS.get('debug') === 'true';
 
 export const USE_GEOJSON_SOURCE = true;
-export const USE_PMTILES_SOURCE = true;
+// Velokarte: PMTiles overlay disabled until we replace mapbox-pmtiles
+// with the standard pmtiles library + maplibre addProtocol.
+export const USE_PMTILES_SOURCE = false;
 
 // Providers
 
