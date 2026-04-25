@@ -55,7 +55,7 @@ jobs:
           rsync -avzr --delete ./build/ \
             "deploy@${{ secrets.VPS_HOST }}:/srv/velokarte/build/"
 
-      - name: Rsync backend, scripts, infra
+      - name: Rsync backend, scripts, infra, config
         run: |
           rsync -avzr --delete --exclude=node_modules --exclude=bun.lockb backend/ \
             "deploy@${{ secrets.VPS_HOST }}:/srv/velokarte/backend/"
@@ -63,6 +63,11 @@ jobs:
             "deploy@${{ secrets.VPS_HOST }}:/srv/velokarte/scripts/"
           rsync -avzr --delete infra/ \
             "deploy@${{ secrets.VPS_HOST }}:/srv/velokarte/infra/"
+          # scripts/overpass-to-geojson.js reads ../src/config/layers.json,
+          # so the layers config must exist at /srv/velokarte/src/config/.
+          ssh "deploy@${{ secrets.VPS_HOST }}" 'mkdir -p /srv/velokarte/src/config'
+          rsync -avzr src/config/layers.json \
+            "deploy@${{ secrets.VPS_HOST }}:/srv/velokarte/src/config/layers.json"
 
       - name: Stage Caddyfile
         run: |
