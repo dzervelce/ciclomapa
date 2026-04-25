@@ -61,7 +61,7 @@
   },
   {
     "name": "Bicicletários & paraciclos",
-    "displayName": "Velosipēdu novietnes",
+    "displayName": "Velo novietnes",
     "shortName": "Novietnes",
     "description": "Dažāda veida velosipēdu novietnes. Vienmēr pārbaudiet to kvalitāti un drošību!",
     "filters": [["amenity", "bicycle_parking"]],
@@ -74,8 +74,8 @@
   },
   {
     "name": "Estações",
-    "displayName": "Velosipēdu nomas stacijas",
-    "shortName": "Nomas",
+    "displayName": "Koplietošanas velo stacijas",
+    "shortName": "Velo stacijas",
     "description": "Velosipēdu koplietošanas (bike sharing) stacijas no dažādiem operatoriem.",
     "filters": [["amenity", "bicycle_rental"]],
     "type": "poi",
@@ -87,7 +87,7 @@
   },
   {
     "name": "Lojas & oficinas",
-    "displayName": "Veikali un servisi",
+    "displayName": "Veikali un darbnīcas",
     "shortName": "Veikali",
     "description": "Velosipēdu un piederumu pārdošanas un remonta uzņēmumi.",
     "filters": [["shop", "bicycle"]],
@@ -102,7 +102,7 @@
     "name": "Ciclovia",
     "displayName": "Velosipēdu ceļi",
     "shortName": "Velosipēdu ceļš",
-    "description": "Pilnīgi atdalīts no auto un gājējiem; ar 2,25 m platu brauktuvi (normālais platums), piemērots velosatiksmes intensitātei līdz 150 V/h.",
+    "description": "Pilnīgi atdalīts no auto un gājējiem.",
     "protectionLevel": "Alta",
     "filters": [
       ["highway", "cycleway"],
@@ -126,7 +126,7 @@
     "name": "Calçada compartilhada",
     "displayName": "Kopīgi gājēju un velo ceļi",
     "shortName": "Kopīgs ceļš",
-    "description": "Viena josla, kur gājēji un velosipēdisti pārvietojas kopā (raksturīgi ārpus apdzīvotām vietām). Atcerieties, ka gājējiem ir priekšroka.",
+    "description": "Viena josla, kur gājēji un velosipēdisti pārvietojas kopā (raksturīgi ārpus apdzīvotām vietām). Gājējiem ir priekšroka.",
     "protectionLevel": "Alta",
     "filters": [
       [
@@ -158,7 +158,7 @@
     "name": "Ciclofaixa",
     "displayName": "Velojoslas",
     "shortName": "Velojosla",
-    "description": "Iezīmēta josla uz brauktuves. Pieņemts veidot uz ceļiem, kur automašīnu ātrums ir līdz 50 km/h; ja lielāks – jāveido atdalīts velosipēdu ceļš.",
+    "description": "Iezīmēta josla uz brauktuves bez fiziskas atdalīšanas no autotransporta. Parasti ielās ar ātrumu līdz 50 km/h.",
     "protectionLevel": "Média",
     "filters": [
       ["cycleway", "lane"],
@@ -179,8 +179,8 @@
   },
   {
     "name": "Ciclorrota",
-    "displayName": "Jaukta satiksme",
-    "shortName": "Jaukta satiksme",
+    "displayName": "Velomaršruti (jauktā satiksmē)",
+    "shortName": "Velomaršruts",
     "description": "Velosipēdists pārvietojas pa kopējo brauktuvi kopā ar autotransportu (tipiski apdzīvotās vietās ar zemu intensitāti).",
     "protectionLevel": "Baixa",
     "filters": [
@@ -206,8 +206,8 @@
   },
   {
     "name": "Baixa velocidade",
-    "displayName": "Mierīgās ielas",
-    "shortName": "30 km/h",
+    "displayName": "Dzīvojamās zonas",
+    "shortName": "Dzīvojamā zona",
     "description": "Vietējās ielas ar reglamentētu ātruma ierobežojumu līdz 30 km/h.",
     "isActive": false,
     "filters": [
@@ -259,8 +259,8 @@
   },
   {
     "name": "Proibido",
-    "displayName": "Aizliegtas",
-    "shortName": "Aizliegts",
+    "displayName": "Aizliegtās vietas",
+    "shortName": "Aizliegtā vieta",
     "description": "Vietas, kurās aizliegts braukt ar velosipēdu. Var nokāpt no velosipēda un to vest.",
     "isActive": false,
     "filters": [
