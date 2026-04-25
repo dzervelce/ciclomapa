@@ -5,6 +5,9 @@ import * as serviceWorkerRegistration from './serviceWorkerRegistration';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { getCssCustomProperties } from './config/design-tokens.js';
 
+// Velokarte: bootstrap i18n (LV default, EN fallback) before any UI renders.
+import './i18n';
+
 // No-op console.debug in production to reduce noise
 if (process.env.NODE_ENV === 'production') {
   console.debug = () => {};

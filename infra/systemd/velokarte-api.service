@@ -1,0 +1,25 @@
+[Unit]
+Description=Velokarte API (Bun)
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=velokarte-api
+Group=velokarte-api
+WorkingDirectory=/srv/velokarte/backend
+EnvironmentFile=/etc/velokarte/env
+ExecStart=/usr/local/bin/bun run server.ts
+Restart=on-failure
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/velokarte
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

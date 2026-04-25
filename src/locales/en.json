@@ -1,0 +1,17 @@
+{
+  "appTitle": "Velokarte",
+  "appTagline": "Latvia's cycling map",
+  "loading": "Loading...",
+  "search": "Search",
+  "city": "City",
+  "layers": "Layers",
+  "refresh": "Refresh",
+  "lastUpdated": "Last updated",
+  "downloadGeoJSON": "Download GeoJSON",
+  "directions": "Directions",
+  "from": "From",
+  "to": "To",
+  "about": "About",
+  "close": "Close",
+  "language": "Language"
+}

@@ -118,6 +118,20 @@ const TOP_CITY_SLUGS_CANDIDATES = [
   'murcia',
   'palma-de-mallorca',
   'las-palmas-de-gran-canaria',
+
+  // Velokarte: Latvia
+  'riga',
+  'liepaja',
+  'daugavpils',
+  'jelgava',
+  'jurmala',
+  'ventspils',
+  'rezekne',
+  'valmiera',
+  'cesis',
+  'kuldiga',
+  'sigulda',
+  'tukums',
 ];
 
 export const TOP_CITY_SLUGS = TOP_CITY_SLUGS_CANDIDATES.filter(isTopCitySlugInSupportedCountries);

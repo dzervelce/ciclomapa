@@ -878,6 +878,116 @@ const PREDEFINED_CITY_CATALOG = {
       lng: -15.4349015,
     },
   },
+
+  // Velokarte: Latvia
+  riga: {
+    query: 'Rīga',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Rīga, Latvija',
+      lat: 56.946285,
+      lng: 24.105186,
+    },
+  },
+  liepaja: {
+    query: 'Liepāja',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Liepāja, Latvija',
+      lat: 56.5046,
+      lng: 21.0107,
+    },
+  },
+  daugavpils: {
+    query: 'Daugavpils',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Daugavpils, Latvija',
+      lat: 55.8714,
+      lng: 26.516,
+    },
+  },
+  jelgava: {
+    query: 'Jelgava',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Jelgava, Latvija',
+      lat: 56.65,
+      lng: 23.7128,
+    },
+  },
+  jurmala: {
+    query: 'Jūrmala',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Jūrmala, Latvija',
+      lat: 56.9682,
+      lng: 23.7794,
+    },
+  },
+  ventspils: {
+    query: 'Ventspils',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Ventspils, Latvija',
+      lat: 57.3897,
+      lng: 21.5606,
+    },
+  },
+  rezekne: {
+    query: 'Rēzekne',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Rēzekne, Latvija',
+      lat: 56.5083,
+      lng: 27.3333,
+    },
+  },
+  valmiera: {
+    query: 'Valmiera',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Valmiera, Latvija',
+      lat: 57.5404,
+      lng: 25.4263,
+    },
+  },
+  cesis: {
+    query: 'Cēsis',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Cēsis, Latvija',
+      lat: 57.3132,
+      lng: 25.27,
+    },
+  },
+  kuldiga: {
+    query: 'Kuldīga',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Kuldīga, Latvija',
+      lat: 56.9701,
+      lng: 21.9624,
+    },
+  },
+  sigulda: {
+    query: 'Sigulda',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Sigulda, Latvija',
+      lat: 57.1546,
+      lng: 24.8595,
+    },
+  },
+  tukums: {
+    query: 'Tukums',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Tukums, Latvija',
+      lat: 56.9683,
+      lng: 23.15,
+    },
+  },
 };
 
 export function getPredefinedCitySlugDefinition(slug) {

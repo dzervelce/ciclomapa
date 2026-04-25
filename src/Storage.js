@@ -1,535 +1,189 @@
 import { get, set } from 'idb-keyval';
 
-import firebase from 'firebase';
+import { slugify } from './utils/utils.js';
+import { DISABLE_LOCAL_STORAGE } from './config/constants.js';
 
-// import { cleanUpInternalTags, gzipCompress } from './utils/geojsonUtils.js'
-import { cleanUpInternalTags } from './utils/geojsonUtils.js';
-import { slugify, sizeOf } from './utils/utils.js';
-import { stringify, parse } from 'zipson';
+/**
+ * Velokarte Storage layer.
+ *
+ * Replaces upstream CicloMapa's Firestore-backed Storage with a thin REST client
+ * against our own Bun + Postgres backend. The exported public surface
+ * (constructor, save, load, getCityStatsDoc, getAllCitiesDocs, getAllCitiesStats,
+ * normalizeStorageKey, printPOIsStats) matches upstream so callers in App.js,
+ * CitySwitcherModal, etc. don't need to change.
+ *
+ * The local IndexedDB cache via idb-keyval is preserved.
+ */
 
-import { osmi18n } from './osmi18n';
-
-import { IS_PROD, DISABLE_LOCAL_STORAGE } from './config/constants.js';
-
-const DEFAULT_CITIES_COLLECTION = IS_PROD ? 'cities' : 'cities-dev';
-
-const firebaseConfig = {
-  apiKey: 'AIzaSyDUbMY3UuyJ9vVVBblhUR9L1B3TV6a3eRU',
-  authDomain: 'ciclomapa-app.firebaseapp.com',
-  databaseURL: 'https://ciclomapa-app.firebaseio.com',
-  projectId: 'ciclomapa-app',
-  storageBucket: 'ciclomapa-app.appspot.com',
-  messagingSenderId: '377722964538',
-  appId: '1:377722964538:web:bc0fada0b3db0587514303',
-};
+const API_BASE = '/api';
 
 class Storage {
-  db;
-  dataBuffer;
-
-  // Constants for new chunking strategy
-  static MAX_DOCUMENT_SIZE = 800 * 1024; // 800KB to stay under Firestore's 1MB limit
-  static ESTIMATED_OVERHEAD = 1000; // bytes for Firestore metadata
-
   constructor() {
-    if (!firebase.apps.length) {
-      firebase.initializeApp({
-        apiKey: firebaseConfig.apiKey,
-        authDomain: firebaseConfig.authDomain,
-        projectId: firebaseConfig.projectId,
-      });
-    }
-
-    this.db = firebase.firestore();
+    // No external SDK to initialize.
   }
 
   /**
-   * Answers "which city is this in storage?": one stable id for a given place so offline and cloud
-   * reads/writes stay aligned when the geocoder label varies (accents, casing, punctuation).
-   *
-   * Pass a custom key only when the stored id must not be derived from the visible city name
-   * (`options.storageKey` on `save`/`load`, chunking helpers, etc.). Falsy input returns `''`.
-   *
-   * @param {*} storageKeyOrName
-   * @returns {string}
+   * Stable id for a given place. Mirrors upstream behavior so offline and
+   * server-side reads/writes align even if the geocoder label varies.
    */
   normalizeStorageKey(storageKeyOrName) {
     if (!storageKeyOrName) return '';
     return slugify(String(storageKeyOrName));
   }
 
+  /**
+   * Debug-only legacy method kept so any caller that referenced it doesn't
+   * crash. Returns an empty `forEach`-able shim.
+   */
   getAllCitiesDocs() {
-    /**
-     * WARNING: EXPENSIVE / INTERNAL-ONLY.
-     *
-     * Collection query over `cities` (root parts only: `part == ''`). Can return many documents.
-     * For debugging/tooling only, not user-facing hot paths. Prefer `.doc(slug).get()` when you
-     * already know the city slug.
-     */
-    return new Promise((resolve) => {
-      this.db
-        .collection(DEFAULT_CITIES_COLLECTION)
-        .where('part', '==', '')
-        .get()
-        .then((querySnapshot) => {
-          console.debug('[Firestore] Documents found:');
-          querySnapshot.forEach((doc) => {
-            console.debug('• ' + doc.id, ' => ', doc.data());
-          });
-
-          resolve(querySnapshot);
-        });
-    });
-  }
-
-  getAllCitiesStats() {
-    /**
-     * WARNING: EXPENSIVE / INTERNAL-ONLY.
-     *
-     * This performs a collection-wide query over Firestore `stats` and can return hundreds+
-     * of documents. It should ONLY be used for internal testing/debugging (e.g. console
-     * inspection), never for user-facing UI flows.
-     *
-     * Prefer fetching specific city stats docs by id (slug) via `getCityStatsDoc()`.
-     */
-    return new Promise((resolve) => {
-      this.db
-        .collection('stats')
-        .where('lengths.ciclovia', '>=', 0)
-        .get()
-        .then((querySnapshot) => {
-          console.debug('[Firestore] Documents found:');
-
-          let docs = [];
-          querySnapshot.forEach((doc) => {
-            let di = doc.data().lengths;
-            if (di && doc.id) {
-              di.total = di['ciclovia'];
-              di.total += di['ciclorrota'];
-              di.total += di['ciclofaixa'];
-              di.total += di['calcada-compartilhada'];
-
-              console.debug(doc.id);
-              docs[doc.id] = di;
-            }
-          });
-          console.log(docs);
-          console.table(docs);
-
-          resolve(querySnapshot);
-        });
-    });
+    return Promise.resolve({ forEach: () => {} });
   }
 
   /**
-   * Fetch one city stats doc from Firestore `stats`.
-   *
-   * @param {string} statsDocId Firestore document id (usually `slugify(areaLabel)`).
-   * @returns {Promise<object|null>} doc data (`{ lengths: ... }`) or null if missing.
+   * Debug helper used by the city switcher to seed-fetch all city stats.
+   * Returns a Firestore-like `{ forEach(cb) }` shim where each cb argument
+   * exposes `.id` and `.data()` to match upstream call sites.
+   */
+  getAllCitiesStats() {
+    console.debug('[Storage] getAllCitiesStats: GET /api/stats');
+    return fetch(`${API_BASE}/stats`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => ({
+        forEach: (cb) =>
+          rows.forEach((row) =>
+            cb({ id: row.slug, data: () => ({ lengths: row.lengths }) })
+          ),
+      }))
+      .catch((err) => {
+        console.warn('[Storage] getAllCitiesStats failed:', err);
+        return { forEach: () => {} };
+      });
+  }
+
+  /**
+   * Fetch one city stats doc.
+   * @param {string} statsDocId  e.g. slugify(areaLabel)
+   * @returns {Promise<{lengths: object}|null>}
    */
   async getCityStatsDoc(statsDocId) {
     const id = String(statsDocId || '').trim();
     if (!id) return null;
     try {
-      const doc = await this.db.collection('stats').doc(id).get();
-      if (!doc.exists) return null;
-      return doc.data() || null;
+      const r = await fetch(`${API_BASE}/stats/${encodeURIComponent(id)}`);
+      if (r.status === 404) return null;
+      if (!r.ok) return null;
+      const data = await r.json();
+      return { lengths: data.lengths };
     } catch (e) {
       console.debug('[Storage] getCityStatsDoc failed:', id, e);
       return null;
     }
   }
 
-  compressJson(_data) {
-    // Deep object clone
-    var data = JSON.parse(JSON.stringify(_data));
-    let compressed;
-
-    console.debug('JSON before compression: ', sizeOf(data));
-
-    // @todo DOESNT WORK because Mapbox needs the OSM tags to render the layers
-    // Minimize size by cleaning clearing OSM tags
-    // cleanUpOSMTags(data);
-
-    // I think it's not needed sincee stringify already does it?
-    // Compress with gzip
-    // compressed = gzipCompress(data);
-
-    cleanUpInternalTags(data);
-
-    compressed = stringify(data, { fullPrecisionFloats: true });
-
-    console.debug('JSON after compression: ', sizeOf(compressed));
-
-    return compressed;
-  }
-
-  saveGeoJSONToFirestore(name, jsonStr, lengths, part) {
+  /**
+   * Save GeoJSON + length stats for a city.
+   * @param {string} name
+   * @param {object} geoJson
+   * @param {object} lengths
+   * @param {object} [options]
+   * @param {string} [options.storageKey]
+   * @returns {Promise<void>}
+   */
+  async save(name, geoJson, lengths, options = {}) {
     const now = new Date();
-    let slug = this.normalizeStorageKey(name);
+    const storageKey = this.normalizeStorageKey(options.storageKey || name);
 
-    if (!!part && part > 1) {
-      slug += part;
-    }
+    // Local IndexedDB cache (immediate, even if backend fails)
+    set(storageKey, {
+      geoJson,
+      updatedAt: now,
+    }).catch((err) => console.warn('[Storage] idb set failed:', err));
 
-    return this.db
-      .collection(DEFAULT_CITIES_COLLECTION)
-      .doc(slug)
-      .set({
-        name: name,
-        geoJson: jsonStr,
-        updatedAt: now,
-        lengths: lengths,
-        part: part || '',
-      });
-  }
-
-  saveStatsToFirestore(name, lengths) {
-    let slug = this.normalizeStorageKey(name);
-
-    return this.db.collection('stats').doc(slug).set({
-      lengths: lengths,
-    });
-  }
-
-  save(name, geoJson, lengths, options = {}) {
-    return new Promise((resolve, reject) => {
-      const now = new Date();
-      const storageKey = this.normalizeStorageKey(options.storageKey || name);
-
-      // Save to Local Storage
-      set(storageKey, {
-        geoJson: geoJson,
-        updatedAt: now,
-      });
-
-      // Save to Firestore using new chunked format
-      try {
-        console.debug(`[Firebase] Saving GeoJSON ${name} using new chunked format...`);
-
-        // Save calculated lengths first
-        this.saveStatsToFirestore(storageKey, lengths)
-          .then(() => {
-            console.debug(`[Firebase] Lengths for ${name} saved successfully.`);
-          })
-          .catch((error) => {
-            console.error('[Firebase] Error saving lengths: ', error);
-            reject(error);
-            return;
-          });
-
-        // Save GeoJSON data using new chunking strategy
-        this.saveWithChunking(name, geoJson, lengths, storageKey)
-          .then(() => {
-            console.debug(`[Firebase] GeoJSON ${name} saved successfully using new format.`);
-            resolve();
-          })
-          .catch((error) => {
-            console.error(`[Firebase] Error saving GeoJSON ${name}: `, error);
-            reject(error);
-          });
-      } catch (e) {
-        console.error(e);
-        reject(e);
-      }
-    });
-  }
-
-  printPOIsStats(geoJson) {
-    if (!geoJson) {
-      return;
-    }
-
-    let tagsCount = {};
-    let valuesCount = {};
-
-    geoJson.features.forEach((f) => {
-      // Only POIs
-      if (f.properties.shop || f.properties.amenity) {
-        for (let k in f.properties) {
-          const name = k;
-          tagsCount[name] = tagsCount[name] === undefined ? 1 : tagsCount[name] + 1;
-
-          const value = f.properties[k];
-          valuesCount[value] = valuesCount[value] === undefined ? 1 : valuesCount[value] + 1;
-        }
-      }
-    });
-
-    let tagsTable = [];
-    for (let t in tagsCount) {
-      const t2 = osmi18n[t];
-      if (tagsCount[t] > 1) {
-        tagsTable.push({
-          name: t,
-          i18n: t2,
-          count: tagsCount[t],
-        });
-      }
-    }
-    // console.table(tagsTable);
-
-    let valuesTable = [];
-    for (let t in valuesCount) {
-      const t2 = osmi18n[t];
-      if (valuesCount[t] > 1) {
-        valuesTable.push({
-          name: t,
-          i18n: t2,
-          count: valuesCount[t],
-        });
-      }
-    }
-    // console.table(valuesTable);
-  }
-
-  async saveWithChunking(name, geoJson, lengths, storageKeyOverride = null) {
-    const compressed = this.compressJson(geoJson);
-    const slug = this.normalizeStorageKey(storageKeyOverride || name);
-
-    // Calculate optimal chunk size
-    const chunkSize = this.calculateOptimalChunkSize(compressed);
-    const chunks = this.createChunks(compressed, chunkSize);
-
-    console.debug(
-      `[Storage] Splitting ${name} into ${chunks.length} chunks (${compressed.length} bytes total)`
-    );
-
-    // Save metadata first
-    await this.db.collection(DEFAULT_CITIES_COLLECTION).doc(`${slug}_metadata`).set({
-      name: name,
-      totalChunks: chunks.length,
-      totalSize: compressed.length,
-      lengths: lengths,
-      updatedAt: new Date(),
-      format: 'chunked_v1',
-    });
-
-    // Save chunks in parallel
-    const chunkPromises = chunks.map((chunk, index) =>
-      this.db
-        .collection(DEFAULT_CITIES_COLLECTION)
-        .doc(`${slug}_chunk_${index + 1}`)
-        .set({
-          data: chunk,
-          chunkNumber: index + 1,
-          totalChunks: chunks.length,
-        })
-    );
-
-    await Promise.all(chunkPromises);
-
-    // Clean up old format data if it exists
-    await this.cleanupOldFormat(slug);
-
-    console.debug(
-      `[Storage] Successfully saved ${name} using new chunked format (${chunks.length} chunks)`
-    );
-  }
-
-  calculateOptimalChunkSize(compressed) {
-    const availableSize = Storage.MAX_DOCUMENT_SIZE - Storage.ESTIMATED_OVERHEAD;
-    const chunksNeeded = Math.ceil(compressed.length / availableSize);
-    return Math.ceil(compressed.length / chunksNeeded);
-  }
-
-  createChunks(data, chunkSize) {
-    const chunks = [];
-    for (let i = 0; i < data.length; i += chunkSize) {
-      chunks.push(data.slice(i, i + chunkSize));
-    }
-    return chunks;
-  }
-
-  async cleanupOldFormat(slugOrName) {
-    const slug = this.normalizeStorageKey(slugOrName);
-
-    // Delete old format documents
-    const oldDocs = [
-      slug, // Main document
-      slug + '2', // Part 2
-      slug + '3', // Part 3
-      slug + '4', // Part 4
-    ];
-
-    const deletePromises = oldDocs.map((docId) =>
-      this.db
-        .collection(DEFAULT_CITIES_COLLECTION)
-        .doc(docId)
-        .delete()
-        .catch((error) => {
-          // Ignore errors if document doesn't exist
-          console.debug(`[Storage] Could not delete old document ${docId}:`, error.message);
-        })
-    );
-
-    await Promise.all(deletePromises);
-    console.debug(`[Storage] Cleaned up old format documents for ${slug}`);
-  }
-
-  async tryLoadNewFormat(slug) {
+    // Backend: stats first (best-effort), then full city blob (must succeed)
     try {
-      // Check if metadata document exists (indicates new format)
-      const metadataDoc = await this.db
-        .collection(DEFAULT_CITIES_COLLECTION)
-        .doc(`${slug}_metadata`)
-        .get();
+      await fetch(`${API_BASE}/stats/${encodeURIComponent(storageKey)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lengths }),
+      });
+    } catch (err) {
+      console.warn('[Storage] stats PUT failed (non-fatal):', err);
+    }
 
-      if (!metadataDoc.exists) {
-        return null; // Old format
+    const cityRes = await fetch(
+      `${API_BASE}/cities/${encodeURIComponent(storageKey)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, geoJson, lengths }),
       }
+    );
+    if (!cityRes.ok) {
+      const text = await cityRes.text().catch(() => '');
+      throw new Error(`city PUT failed: ${cityRes.status} ${text}`);
+    }
+  }
 
-      const metadata = metadataDoc.data();
-      console.debug(
-        `[Storage] Found new format metadata for ${slug}: ${metadata.totalChunks} chunks`
+  /**
+   * Load cached city geojson. Tries local IndexedDB first (unless disabled),
+   * then backend.
+   * @param {string} name
+   * @param {object} [options]
+   * @returns {Promise<{geoJson: object, lengths: object, updatedAt: Date}|null>}
+   */
+  async load(name, options = {}) {
+    const storageKey = this.normalizeStorageKey(options.storageKey || name);
+
+    if (!DISABLE_LOCAL_STORAGE) {
+      try {
+        const local = await get(storageKey);
+        if (local) {
+          return {
+            geoJson: local.geoJson,
+            updatedAt: local.updatedAt,
+            lengths: local.lengths,
+          };
+        }
+      } catch (err) {
+        console.warn('[Storage] idb get failed:', err);
+      }
+    }
+
+    try {
+      const r = await fetch(
+        `${API_BASE}/cities/${encodeURIComponent(storageKey)}`
       );
-
-      // Load all chunks in parallel
-      const chunkPromises = [];
-      for (let i = 1; i <= metadata.totalChunks; i++) {
-        chunkPromises.push(this.loadChunk(slug, i));
+      if (r.status === 404) return null;
+      if (!r.ok) {
+        console.warn('[Storage] city GET failed:', r.status);
+        return null;
       }
-
-      const chunks = await Promise.all(chunkPromises);
-
-      // Reassemble data
-      const compressed = chunks.join('');
-      const geoJson = this.decompressData(compressed);
-
+      const data = await r.json();
+      const updatedAt = data.updatedAt ? new Date(data.updatedAt) : new Date();
+      this.printPOIsStats(data.geoJson);
       return {
-        geoJson: geoJson,
-        updatedAt: metadata.updatedAt.toDate(),
-        lengths: metadata.lengths,
+        geoJson: data.geoJson,
+        lengths: data.lengths,
+        updatedAt,
       };
-    } catch (error) {
-      console.debug(`[Storage] New format load failed for ${slug}:`, error);
+    } catch (err) {
+      console.warn('[Storage] city GET threw:', err);
       return null;
     }
   }
 
-  async loadChunk(slug, chunkNumber) {
-    const doc = await this.db
-      .collection(DEFAULT_CITIES_COLLECTION)
-      .doc(`${slug}_chunk_${chunkNumber}`)
-      .get();
-
-    if (!doc.exists) {
-      throw new Error(`Chunk ${chunkNumber} not found for ${slug}`);
-    }
-
-    return doc.data().data;
-  }
-
-  decompressData(compressed) {
-    try {
-      return parse(compressed); // Zipson
-    } catch (e) {
-      // Fallback to JSON.parse for old data
-      console.debug('[Storage] Zipson decompression failed, trying JSON.parse');
-      return JSON.parse(compressed);
-    }
-  }
-
-  getDataFromDB(slug, resolve, reject, part) {
-    const slugWithPart = slug + (part || '');
-    this.db
-      .collection(DEFAULT_CITIES_COLLECTION)
-      .doc(slugWithPart)
-      .get()
-      .then((doc) => {
-        if (doc.exists) {
-          let data = doc.data();
-
-          console.debug('[Firebase] Retrieved document data:', data);
-
-          if (!data.part || data.part === 1) {
-            // Recursion iteration 0
-            this.dataBuffer = {};
-            this.dataBuffer.geoJson = data.geoJson;
-            this.dataBuffer.updatedAt = data.updatedAt;
-            this.dataBuffer.lengths = data.lengths;
-            return this.getDataFromDB(slug, resolve, reject, 2);
-          } else if (data.part >= 2) {
-            // Recursion iteration n
-            this.dataBuffer.geoJson += data.geoJson;
-            return this.getDataFromDB(slug, resolve, reject, data.part + 1);
-          }
-        } else {
-          console.debug('[Firebase] No document for: ', slugWithPart);
-
-          // Check if recursion tail
-          if (!!part) {
-            let ret = {};
-            ret.updatedAt = this.dataBuffer.updatedAt.toDate();
-            ret.lengths = this.dataBuffer.lengths;
-
-            try {
-              ret.geoJson = parse(this.dataBuffer.geoJson);
-            } catch (e) {
-              // Retrocompatibility, for when we didn't use Zipson compression
-              console.error(e);
-              ret.geoJson = JSON.parse(this.dataBuffer.geoJson);
-            }
-
-            this.printPOIsStats(ret.geoJson);
-
-            resolve(ret);
-          } else {
-            resolve();
-          }
+  /** Lightweight POI tag accounting; behavior preserved from upstream debug helper. */
+  printPOIsStats(geoJson) {
+    if (!geoJson || !Array.isArray(geoJson.features)) return;
+    const tagsCount = {};
+    geoJson.features.forEach((f) => {
+      if (f?.properties && (f.properties.shop || f.properties.amenity)) {
+        for (const k in f.properties) {
+          tagsCount[k] = (tagsCount[k] || 0) + 1;
         }
-      })
-      .catch((error) => {
-        console.error(`[Firebase] Error getting document: ${slug}`, error);
-        reject(error);
-      });
-  }
-
-  load(name, options = {}) {
-    const storageKey = this.normalizeStorageKey(options.storageKey || name);
-    const slug = storageKey;
-
-    return new Promise((resolve, reject) => {
-      if (!DISABLE_LOCAL_STORAGE) {
-        get(storageKey).then((local) => {
-          if (local) {
-            resolve(local);
-          } else {
-            // Try new chunked format first, then fallback to old format
-            this.tryLoadNewFormat(slug)
-              .then((data) => {
-                if (data) {
-                  console.debug(`[Storage] Loaded ${name} using new chunked format`);
-                  resolve(data);
-                } else {
-                  console.debug(`[Storage] Falling back to old format for ${name}`);
-                  this.getDataFromDB(slug, resolve, reject);
-                }
-              })
-              .catch((error) => {
-                console.error(`[Storage] Error loading ${name}:`, error);
-                reject(error);
-              });
-          }
-        });
-      } else {
-        // Try new chunked format first, then fallback to old format
-        this.tryLoadNewFormat(slug)
-          .then((data) => {
-            if (data) {
-              console.debug(`[Storage] Loaded ${name} using new chunked format`);
-              resolve(data);
-            } else {
-              console.debug(`[Storage] Falling back to old format for ${name}`);
-              this.getDataFromDB(slug, resolve, reject);
-            }
-          })
-          .catch((error) => {
-            console.error(`[Storage] Error loading ${name}:`, error);
-            reject(error);
-          });
       }
     });
+    console.debug('[Storage] POI tag counts:', Object.keys(tagsCount).length);
   }
 }
 

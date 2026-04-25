@@ -2,7 +2,8 @@
  * OSM & Overpass
  */
 
-export const OSM_DATA_MAX_AGE_DAYS = 30;
+// Velokarte: aggressive freshness — refresh per-city cache if older than ~1 hour.
+export const OSM_DATA_MAX_AGE_DAYS = 0.04;
 
 export const BLACKLISTED_CITIES_FOR_EXTRA_LAYERS = [
   3600062422, // Berlin, Berlin, Germany
@@ -32,14 +33,9 @@ export const OVERPASS_SERVERS = [
   'https://overpass.osm.jp/api/interpreter',
 ];
 
-export const AREA_ID_OVERRIDES = {
-  'Vitória, Espirito Santo, Brasil': 3601825817,
-  'Brasília, Distrito Federal, Brasil': 3602662005,
-  'København, Capital RegionDenmark, Denmark': 3613707878,
-  'Comuna 1, Buenos Aires, Argentina': 3601224652,
-  'Stockholm, Stockholm, Sweden': 3600398021,
-  'Madri, Madrid, Espanha': 3605326784,
-};
+// Velokarte: empty by default — fill in only if a Latvian city's geocoded name
+// fails to resolve to its OSM relation id automatically.
+export const AREA_ID_OVERRIDES = {};
 
 /*
  * Layout
@@ -70,22 +66,14 @@ export const MIN_ROUTE_COVERAGE_PERCENT_TO_DISPLAY = 5;
 export const MAX_RECENT_CITIES = IS_MOBILE ? 3 : 6;
 export const ENABLE_MAP_CLICK_TO_SET_POINTS = false;
 export const ENABLE_AUTO_AREA_CHANGE_ON_POINT = false;
-export const ENABLE_COMMENTS = true;
+// Velokarte: comments / Airtable feature stripped. Code paths stay (gated by this flag).
+export const ENABLE_COMMENTS = false;
 export const ENABLE_SATELLITE_TOGGLE = false;
 
+// Velokarte: Latvia only. The `labelPt` key name is preserved (callers reference
+// it explicitly) but its value holds the Latvian-language country name.
 export const SUPPORTED_COUNTRIES = Object.freeze([
-  { code: 'br', labelPt: 'Brasil', flag: '🇧🇷' },
-  { code: 'pt', labelPt: 'Portugal', flag: '🇵🇹' },
-  { code: 'es', labelPt: 'Espanha', flag: '🇪🇸' },
-  // { code: 'ar', labelPt: 'Argentina', flag: '🇦🇷' },
-  // { code: 'bo', labelPt: 'Bolívia', flag: '🇧🇴' },
-  // { code: 'cl', labelPt: 'Chile', flag: '🇨🇱' },
-  // { code: 'co', labelPt: 'Colômbia', flag: '🇨🇴' },
-  // { code: 'ec', labelPt: 'Equador', flag: '🇪🇨' },
-  // { code: 'py', labelPt: 'Paraguai', flag: '🇵🇾' },
-  // { code: 'pe', labelPt: 'Peru', flag: '🇵🇪' },
-  // { code: 'uy', labelPt: 'Uruguai', flag: '🇺🇾' },
-  // { code: 've', labelPt: 'Venezuela', flag: '🇻🇪' },
+  { code: 'lv', labelPt: 'Latvija', flag: '🇱🇻' },
 ]);
 
 export const SUPPORTED_COUNTRY_CODES = Object.freeze(SUPPORTED_COUNTRIES.map((c) => c.code));
@@ -97,7 +85,7 @@ export const MAPBOX_GEOCODER_COUNTRIES = SUPPORTED_COUNTRY_CODES.join(',');
  * Google Places script/Autocomplete region bias (one ccTLD). Searches still
  * restrict to all `SUPPORTED_COUNTRY_CODES` via componentRestrictions.
  */
-export const GOOGLE_PLACES_DEFAULT_REGION = 'br';
+export const GOOGLE_PLACES_DEFAULT_REGION = 'lv';
 
 export const SUPPORTED_COUNTRY_LABEL_PT_BY_CODE = Object.freeze(
   SUPPORTED_COUNTRIES.reduce((acc, { code, labelPt }) => {
@@ -139,28 +127,28 @@ export const ROUTES_ACTIVE_HIGH_ZOOM_WIDTH_MULTIPLIER = 0.5;
  * Map
  */
 
-export const DEFAULT_AREA = 'Fortaleza, Ceará, Brasil';
-export const DEFAULT_LNG = -38.5225359;
-export const DEFAULT_LAT = -3.7719909;
-export const DEFAULT_ZOOM = 12;
+// Velokarte: default to Riga.
+export const DEFAULT_AREA = 'Rīga, Latvija';
+export const DEFAULT_LNG = 24.105186;
+export const DEFAULT_LAT = 56.946285;
+export const DEFAULT_ZOOM = 11;
 export const INTERACTIVE_LAYERS_ZOOM_THRESHOLD = 15;
 export const COMMENTS_ZOOM_THRESHOLD = 13;
 export const MAP_AUTOCHANGE_AREA_ZOOM_THRESHOLD = 12;
 
-// DEFAULT_PMTILES_FILENAME
-//   br.pmtiles → PROD
-//   la_es_pt.pmtiles → PREVIEW
-//   br_es_pt.pmtiles
-//   la.pmtiles
-//   europe.pmtiles (???)
-const DEFAULT_PMTILES_FILENAME = 'la_es_pt.pmtiles';
+// Velokarte: single Latvia PMTiles, regenerated hourly by VPS cron.
+const DEFAULT_PMTILES_FILENAME = 'latvia.pmtiles';
 export const PMTILES_FILENAME = process.env.REACT_APP_PMTILES_FILENAME || DEFAULT_PMTILES_FILENAME;
+
+// Velokarte: MapTiler basemap style URL (with API key embedded).
+// Set REACT_APP_MAPTILER_STYLE_URL in GitHub Actions Secrets.
+export const MAPTILER_STYLE_URL = process.env.REACT_APP_MAPTILER_STYLE_URL || '';
 
 /*
  * Debug & local development
  */
 
-export const IS_PROD = window.location.hostname === 'ciclomapa.app';
+export const IS_PROD = window.location.hostname === 'velokarte.pocs.dev';
 
 export const ENABLE_OFFICIAL_CITY_HALL_METRICS_COMPARISON =
   process.env.REACT_APP_ENABLE_OFFICIAL_CITY_HALL_METRICS === 'true'
@@ -183,6 +171,8 @@ export const ABOUT_MODAL_ALWAYS_AUTO_OPEN_IN_NON_PROD = false;
 export const ENABLE_CITY_SWITCHER_STATS_CACHE = IS_PROD;
 
 export const DEFAULT_SIDEBAR_OPEN = false;
+// Velokarte: name preserved for compatibility with callers; this flag now gates
+// writes to our Postgres-backed /api endpoints rather than Firestore.
 export const SAVE_TO_FIREBASE = true;
 export const DISABLE_DATA_HEALTY_TEST = false;
 export const THRESHOLD_NEW_VS_OLD_DATA_TOLERANCE = 0.1;
@@ -204,15 +194,22 @@ export const GRAPHHOPPER_BASE_URL = 'https://graphhopper.com/api/1/route';
 export const VALHALLA_BASE_URL = 'https://valhalla1.openstreetmap.de/route';
 
 /*
- * Mapbox
+ * Mapbox / MapLibre
+ *
+ * Velokarte uses MapLibre GL JS (installed via npm alias as `mapbox-gl`) and
+ * MapTiler-hosted basemap styles. MAPBOX_ACCESS_TOKEN is intentionally a no-op
+ * for MapLibre; kept exported so legacy `mapboxgl.accessToken = ...` lines
+ * compile without surgery.
  */
 
-export const MAPBOX_ACCESS_TOKEN = process.env.REACT_APP_MAPBOX_ACCESS_TOKEN;
+export const MAPBOX_ACCESS_TOKEN =
+  process.env.REACT_APP_MAPBOX_ACCESS_TOKEN || 'not-needed-for-maplibre';
 
 export const GOOGLE_PLACES_API_KEY = process.env.REACT_APP_GOOGLE_PLACES_API_KEY;
 
+// Velokarte: both LIGHT and DARK point at the same MapTiler style URL by default.
+// Pick a different MapTiler style (e.g. dataviz-dark) for DARK if desired.
 export const MAP_STYLES = {
-  DARK: 'mapbox://styles/cmdalbem/ckgpww8gi2nk619kkl0zrlodm',
-  LIGHT: 'mapbox://styles/cmdalbem/cjxseldep7c0a1doc7ezn6aeb',
-  // LIGHT: 'mapbox://styles/cmdalbem/cmf6j71jk00cv01sjezoh6fky'
+  DARK: MAPTILER_STYLE_URL,
+  LIGHT: MAPTILER_STYLE_URL,
 };

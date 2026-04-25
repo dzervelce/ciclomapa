@@ -1,0 +1,19 @@
+[Unit]
+Description=Velokarte PMTiles refresh (oneshot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=velokarte-api
+Group=velokarte-api
+WorkingDirectory=/srv/velokarte/backend
+EnvironmentFile=-/etc/velokarte/env
+ExecStart=/usr/local/bin/bun run refresh-pmtiles.ts
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/velokarte /tmp
+PrivateTmp=true

@@ -1,0 +1,17 @@
+{
+  "appTitle": "Velokarte",
+  "appTagline": "Latvijas riteņbraucēju karte",
+  "loading": "Ielādē...",
+  "search": "Meklēt",
+  "city": "Pilsēta",
+  "layers": "Slāņi",
+  "refresh": "Atsvaidzināt",
+  "lastUpdated": "Pēdējoreiz atjaunināts",
+  "downloadGeoJSON": "Lejupielādēt GeoJSON",
+  "directions": "Maršruts",
+  "from": "No",
+  "to": "Uz",
+  "about": "Par",
+  "close": "Aizvērt",
+  "language": "Valoda"
+}
