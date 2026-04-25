@@ -4,16 +4,10 @@ import { useDirections } from './contexts/DirectionsContext';
 import mapboxgl from 'mapbox-gl';
 import turfBbox from '@turf/bbox';
 import turfCircle from '@turf/circle';
-// Velokarte: `mapbox-gl` is npm-aliased to maplibre-gl. The CSS file in MapLibre's
-// dist/ is named `maplibre-gl.css`, not `mapbox-gl.css`.
-import 'mapbox-gl/dist/maplibre-gl.css';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
-// Velokarte: PMTiles support deferred. mapbox-pmtiles targets Mapbox GL JS
-// (uses Style.setSourceType which doesn't exist on MapLibre). Once we replace
-// it with the standard `pmtiles` library + addProtocol, re-enable this.
-// USE_PMTILES_SOURCE in constants.js gates all the call sites below.
-// import { PmTilesSource } from 'mapbox-pmtiles';
+import { PmTilesSource } from 'mapbox-pmtiles';
 
 import {
   MAPBOX_ACCESS_TOKEN,
@@ -56,14 +50,6 @@ import { arrowIconsByLayer, arrowIcons, arrowSdf, iconsMap } from './features/ma
 import { reverseGeocodePlace } from './features/map/geocoding.js';
 
 import './Map.css';
-
-// Velokarte: stub for the disabled mapbox-pmtiles. References to PmTilesSource
-// elsewhere in the file are inside `if (USE_PMTILES_SOURCE)` blocks (now false),
-// so this stub never runs in practice — it just keeps the symbol defined.
-const PmTilesSource = {
-  SOURCE_TYPE: 'pmtile-disabled',
-  getHeader: () => Promise.reject(new Error('PMTiles disabled')),
-};
 
 /**
  * Single camera behavior for focusing the map on a city (slug navigation, city picker).
@@ -2303,9 +2289,8 @@ class Map extends Component {
 
     mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
-    // Velokarte: PMTiles source registration is fully disabled here.
-    // See comment on the (commented-out) PmTilesSource import at top of file
-    // and the USE_PMTILES_SOURCE flag in constants.js.
+    // Register PmTiles source type
+    mapboxgl.Style.setSourceType(PmTilesSource.SOURCE_TYPE, PmTilesSource);
 
     try {
       console.log('Creating Mapbox map...');

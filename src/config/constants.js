@@ -178,9 +178,10 @@ const URL_PARAMS = new URLSearchParams(window.location.search);
 export const FORCE_RECALCULATE_LENGTHS_ALWAYS = URL_PARAMS.get('debug') === 'true';
 
 export const USE_GEOJSON_SOURCE = true;
-// Velokarte: PMTiles overlay disabled until we replace mapbox-pmtiles
-// with the standard pmtiles library + maplibre addProtocol.
-export const USE_PMTILES_SOURCE = false;
+// Velokarte: PMTiles overlay re-enabled now that we're back on real Mapbox GL JS.
+// First deploy: file at /srv/velokarte/pmtiles/latvia.pmtiles must exist —
+// run `systemctl start velokarte-pmtiles.service` on the VPS once after deploy.
+export const USE_PMTILES_SOURCE = true;
 
 // Providers
 
@@ -193,22 +194,20 @@ export const GRAPHHOPPER_BASE_URL = 'https://graphhopper.com/api/1/route';
 export const VALHALLA_BASE_URL = 'https://valhalla1.openstreetmap.de/route';
 
 /*
- * Mapbox / MapLibre
+ * Mapbox
  *
- * Velokarte uses MapLibre GL JS (installed via npm alias as `mapbox-gl`) and
- * MapTiler-hosted basemap styles. MAPBOX_ACCESS_TOKEN is intentionally a no-op
- * for MapLibre; kept exported so legacy `mapboxgl.accessToken = ...` lines
- * compile without surgery.
+ * Velokarte uses Mapbox GL JS v3 with a free-tier Mapbox public token.
+ * MAPTILER_STYLE_URL above is left exported but currently unused; swap it
+ * back into MAP_STYLES if you ever want MapTiler tiles instead.
  */
 
-export const MAPBOX_ACCESS_TOKEN =
-  process.env.REACT_APP_MAPBOX_ACCESS_TOKEN || 'not-needed-for-maplibre';
+export const MAPBOX_ACCESS_TOKEN = process.env.REACT_APP_MAPBOX_ACCESS_TOKEN;
 
 export const GOOGLE_PLACES_API_KEY = process.env.REACT_APP_GOOGLE_PLACES_API_KEY;
 
-// Velokarte: both LIGHT and DARK point at the same MapTiler style URL by default.
-// Pick a different MapTiler style (e.g. dataviz-dark) for DARK if desired.
+// Mapbox standard styles. Swap to MAPTILER_STYLE_URL or a custom Mapbox
+// Studio style URL if you want a different aesthetic.
 export const MAP_STYLES = {
-  DARK: MAPTILER_STYLE_URL,
-  LIGHT: MAPTILER_STYLE_URL,
+  DARK: 'mapbox://styles/mapbox/dark-v11',
+  LIGHT: 'mapbox://styles/mapbox/streets-v12',
 };
