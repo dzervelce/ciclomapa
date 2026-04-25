@@ -217,25 +217,25 @@ function TopBar(props) {
                 </Space.Compact>
 
                 <Button className="glass-bg" onClick={openAboutModal}>
-                  Sobre
+                  Par
                 </Button>
 
                 <Dropdown menu={collaborateMenu}>
                   <Button className="glass-bg">
-                    <span> Colaborar </span>
+                    <span> Iesaistīties </span>
                     <IconCaret className="text-green-300" style={{ marginRight: '-3px' }} />
                   </Button>
                 </Dropdown>
 
                 {!isSidebarOpen && (
                   <Button className="glass-bg" onClick={() => toggleSidebar(true)}>
-                    Métricas
+                    Statistika
                   </Button>
                 )}
               </div>
             ) : (
               <Button target="_blank" href={window.location.href.replace(/&embed=true/g, '')}>
-                <IconMap /> Ver mapa completo
+                <IconMap /> Atvērt pilno karti
               </Button>
             )}
           </div>

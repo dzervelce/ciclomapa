@@ -15,7 +15,7 @@ export default function LocationSearchInput({
   const handlers = parentComponent;
 
   const isFrom = inputType === 'from';
-  const placeholder = isFrom ? 'Origem' : 'Destino';
+  const placeholder = isFrom ? 'No kurienes' : 'Uz kurieni';
   const showGeolocation = isFrom; // Only show GPS button for origin
 
   return (

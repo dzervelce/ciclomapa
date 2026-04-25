@@ -202,10 +202,10 @@ class AnalyticsSidebar extends Component {
     const vias = this.getViasMetrics();
 
     const translateStrategy = {
-      random: 'Aleatório',
-      optimistic: 'Otimista',
-      pessimistic: 'Pessimista',
-      average: 'Média',
+      random: 'Nejaušs',
+      optimistic: 'Optimistisks',
+      pessimistic: 'Pesimistisks',
+      average: 'Vidējs',
     };
     const strategiesDropdown = (
       <div className="w-full flex justify-center mb-2">
@@ -218,7 +218,7 @@ class AnalyticsSidebar extends Component {
             value: s,
             label: translateStrategy[s],
           }))}
-          aria-label="Estratégia de cálculo de extensão"
+          aria-label="Garuma aprēķina stratēģija"
         />
       </div>
     );
@@ -233,7 +233,7 @@ class AnalyticsSidebar extends Component {
         <div className="px-5 pb-10">
           <div className="flex w-full justify-between items-center pt-2 mt-1">
             <div className="flex items-center">
-              <h2 className="my-0">Métricas</h2>
+              <h2 className="my-0">Statistika</h2>
             </div>
 
             <Button
@@ -242,7 +242,7 @@ class AnalyticsSidebar extends Component {
               className="text-xl -mr-2 text-inherit"
               icon={<IconClose />}
               onClick={() => this.props.toggle(false)}
-              aria-label="Fechar painel de métricas"
+              aria-label="Aizvērt statistikas paneli"
             />
           </div>
 
@@ -426,7 +426,7 @@ class AnalyticsSidebar extends Component {
           )}
 
           <Section
-            title="Vias"
+            title="Ceļi"
             description={
               <>
                 <p>
@@ -542,7 +542,7 @@ class AnalyticsSidebar extends Component {
             </div>
           </Section>
 
-          <Section title="Pontos de interesse">
+          <Section title="Interešu vietas">
             {layers
               .filter((l) => l.type === 'poi' && l.name !== 'Comentários')
               .map(
@@ -555,7 +555,7 @@ class AnalyticsSidebar extends Component {
           </Section>
 
           {this.props.downloadData && (
-            <Section title="Download dados">
+            <Section title="Lejupielādēt datus">
               <p className="text-xs opacity-50">
                 Baixe os dados da infraestrutura cicloviária desta cidade em formato GeoJSON para
                 uso em seus próprios projetos e análises.

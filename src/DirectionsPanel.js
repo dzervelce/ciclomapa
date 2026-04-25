@@ -791,7 +791,7 @@ class DirectionsPanel extends Component {
         }
       }
 
-      const address = result.place_name || 'Nova posição';
+      const address = result.place_name || 'Jauna pozīcija';
 
       // Update the search input value
       this.setState({
@@ -829,7 +829,7 @@ class DirectionsPanel extends Component {
     } catch (error) {
       console.error('Reverse geocoding error:', error);
       this.setState({
-        [`${type}SearchValue`]: 'Nova posição',
+        [`${type}SearchValue`]: 'Jauna pozīcija',
       });
     }
   }
@@ -1060,7 +1060,7 @@ class DirectionsPanel extends Component {
                 <>
                   <h3 className=" font-semibold flex items-center mb-0">
                     {/* <IconRoute className="mr-2" /> */}
-                    Rotas
+                    Maršruts
                   </h3>
 
                   <div className="flex items-start gap-2 -mr-1" style={{ marginTop: '-5px' }}>
@@ -1070,7 +1070,7 @@ class DirectionsPanel extends Component {
                         type="text"
                         shape="circle"
                         icon={<IconTrash />}
-                        aria-label="Limpar rotas"
+                        aria-label="Notīrīt maršrutu"
                       />
                     )}
 
@@ -1088,8 +1088,8 @@ class DirectionsPanel extends Component {
                           shape="circle"
                           icon={<IconCog />}
                           className="flex-shrink-0 text-white"
-                          title="Configurações do serviço"
-                          aria-label="Configurações do serviço de rotas"
+                          title="Pakalpojuma iestatījumi"
+                          aria-label="Maršruta pakalpojuma iestatījumi"
                         />
                       </Popover>
                     )}
@@ -1100,7 +1100,7 @@ class DirectionsPanel extends Component {
                       type="text"
                       shape="circle"
                       icon={<IconClose />}
-                      aria-label="Fechar painel de rotas"
+                      aria-label="Aizvērt maršruta paneli"
                     />
                     {/* // )} */}
                   </div>
@@ -1137,8 +1137,8 @@ class DirectionsPanel extends Component {
                   }
                   onClick={this.swapOriginDestination}
                   className="swap-button cm-route-points__swap"
-                  title="Trocar origem e destino"
-                  aria-label="Trocar origem e destino"
+                  title="Mainīt vietām sākuma un galapunktu"
+                  aria-label="Mainīt vietām sākuma un galapunktu"
                 />
               </div>
             )}
