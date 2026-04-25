@@ -2305,8 +2305,19 @@ class Map extends Component {
 
     mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
-    // Register PmTiles source type
-    mapboxgl.Style.setSourceType(PmTilesSource.SOURCE_TYPE, PmTilesSource);
+    // Velokarte: mapboxgl is npm-aliased to maplibre-gl, which doesn't have
+    // Style.setSourceType. The proper fix is to use the standard `pmtiles`
+    // library's addProtocol() registration; deferred to a follow-up patch.
+    // Skipping the call lets the rest of the map render (basemap + GeoJSON);
+    // the PMTiles-backed overlay layers just won't show until then.
+    if (typeof mapboxgl.Style?.setSourceType === 'function') {
+      mapboxgl.Style.setSourceType(PmTilesSource.SOURCE_TYPE, PmTilesSource);
+    } else {
+      console.info(
+        '[Velokarte] mapboxgl.Style.setSourceType not available (MapLibre); ' +
+          'PMTiles overlay will not render until protocol-based registration is wired up.'
+      );
+    }
 
     try {
       console.log('Creating Mapbox map...');
