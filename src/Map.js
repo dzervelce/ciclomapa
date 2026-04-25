@@ -4,7 +4,9 @@ import { useDirections } from './contexts/DirectionsContext';
 import mapboxgl from 'mapbox-gl';
 import turfBbox from '@turf/bbox';
 import turfCircle from '@turf/circle';
-import 'mapbox-gl/dist/mapbox-gl.css';
+// Velokarte: `mapbox-gl` is npm-aliased to maplibre-gl. The CSS file in MapLibre's
+// dist/ is named `maplibre-gl.css`, not `mapbox-gl.css`.
+import 'mapbox-gl/dist/maplibre-gl.css';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import { PmTilesSource } from 'mapbox-pmtiles';
