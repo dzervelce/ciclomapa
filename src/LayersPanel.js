@@ -128,7 +128,14 @@ class LayersPanel extends Component {
                           {l.protectionLevel === 'Alta' && <IconSignal3 />}
                           {l.protectionLevel === 'Média' && <IconSignal2 />}
                           {l.protectionLevel === 'Baixa' && <IconSignal1 />}
-                          {l.protectionLevel} proteção
+                          {l.protectionLevel === 'Alta'
+                            ? 'Augsta'
+                            : l.protectionLevel === 'Média'
+                              ? 'Vidēja'
+                              : l.protectionLevel === 'Baixa'
+                                ? 'Zema'
+                                : l.protectionLevel}{' '}
+                          aizsardzība
                         </InfrastructureBadge>
                       )}
                     </div>

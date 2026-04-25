@@ -219,7 +219,14 @@ class LayersLegendModal extends Component {
                   {layer.protectionLevel === 'Alta' && <IconSignal3 />}
                   {layer.protectionLevel === 'Média' && <IconSignal2 />}
                   {layer.protectionLevel === 'Baixa' && <IconSignal1 />}
-                  {layer.protectionLevel} proteção
+                  {layer.protectionLevel === 'Alta'
+                    ? 'Augsta'
+                    : layer.protectionLevel === 'Média'
+                      ? 'Vidēja'
+                      : layer.protectionLevel === 'Baixa'
+                        ? 'Zema'
+                        : layer.protectionLevel}{' '}
+                  aizsardzība
                 </InfrastructureBadge>
               )}
             </div>

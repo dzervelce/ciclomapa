@@ -2,12 +2,12 @@ import React, { useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import PropTypes from 'prop-types';
 import { Button, Tooltip } from 'antd';
-import { HiBookOpen, HiEnvelope, HiOutlineXMark } from 'react-icons/hi2';
+import { HiOutlineXMark } from 'react-icons/hi2';
 import { FaGithub } from 'react-icons/fa';
 
-import itdp from './img/itdp.png';
-import ucb from './img/ucb.png';
-import premiobicicletabrasil from './img/premiobicicletabrasil.png';
+// Velokarte: dropped Brazilian sponsor logos (itdp, ucb, premiobicicletabrasil)
+// from the footer — those orgs aren't relevant for a Latvian fork. Attribution
+// to the upstream CicloMapa project is preserved via the GitHub link.
 
 import { ABOUT_MODAL_ALWAYS_AUTO_OPEN_IN_NON_PROD, IS_PROD } from './config/constants.js';
 import { getPredefinedCityStaticLocation } from './config/citySlugCatalog.js';
@@ -229,7 +229,7 @@ function AboutModal({
               type="text"
               className="!p-2 flex items-center justify-center !min-w-0 -mt-2 -mr-2"
               onClick={handleClose}
-              aria-label="Fechar"
+              aria-label="Aizvērt"
               icon={<HiOutlineXMark className="text-lg opacity-70" aria-hidden />}
             />
           </header>
@@ -248,7 +248,7 @@ function AboutModal({
                 {metrics && (
                   <ul
                     className="flex flex-wrap gap-1.5 list-none p-0 m-0 mb-8"
-                    aria-label="Indicadores rápidos desta cidade"
+                    aria-label="Šīs pilsētas ātrie rādītāji"
                     data-testid="about-modal-quick-stats"
                   >
                     <li
@@ -272,7 +272,7 @@ function AboutModal({
                             )}
                           </span>
                         )}
-                        <span className="font-normal"> ciclovias</span>
+                        <span className="font-normal"> veloceļi</span>
                       </InfrastructureBadge>
                     </li>
                     <li
@@ -296,7 +296,7 @@ function AboutModal({
                             )}
                           </span>
                         )}
-                        <span className="font-normal"> ciclofaixas</span>
+                        <span className="font-normal"> velojoslas</span>
                       </InfrastructureBadge>
                     </li>
                     <li
@@ -309,10 +309,10 @@ function AboutModal({
                           <AboutModalMetricSkeleton isDarkMode={isDarkMode} />
                         ) : (
                           <span className="tabular-nums">
-                            {metrics.poiTotal.toLocaleString('pt-BR')}
+                            {metrics.poiTotal.toLocaleString('lv-LV')}
                           </span>
                         )}
-                        <span className="font-normal"> pontos de interesse</span>
+                        <span className="font-normal"> interešu vietas</span>
                       </InfrastructureBadge>
                     </li>
                     {/* <li className="m-0">
@@ -340,16 +340,15 @@ function AboutModal({
               </>
             ) : (
               <h2 id="about-modal-title" data-testid="about-modal-title" className="sr-only">
-                Sobre o CicloMapa
+                Par Velokarti
               </h2>
             )}
             <p className="mb-3 text-sm sm:text-base sm:leading-relaxed">
-              Pedale com mais segurança planejando suas rotas com o CicloMapa: ciclovias,
-              ciclofaixas, bicicletários, oficinas, e tudo mais que importa para quem pedala na
-              cidade.
+              Brauciet droši, plānojot maršrutus ar Velokarti: veloceļi, velojoslas, novietnes,
+              servisi un viss cits, kas svarīgs riteņbraucējiem Latvijā.
             </p>
             <p className="mb-3 text-sm sm:text-base sm:leading-relaxed">
-              Com base no{' '}
+              Balstoties uz{' '}
               <a
                 className={inlineLinkClass}
                 href={CITY_ABOUT_OSM_URL}
@@ -358,9 +357,8 @@ function AboutModal({
               >
                 OpenStreetMap
               </a>
-              , o maior mapa colaborativo aberto do mundo, o CicloMapa amplia o acesso a dados
-              cicloviários para cidadãos, pesquisadores e gestores públicos, fortalecendo a
-              mobilidade por bicicleta no Brasil.
+              , pasaulē lielāko atvērto sadarbības karti, Velokarte uzlabo piekļuvi velo
+              infrastruktūras datiem Latvijas iedzīvotājiem un pētniekiem.
             </p>
             {/* 
                 {metrics && (
@@ -450,7 +448,7 @@ function AboutModal({
                 data-testid="about-modal-dismiss"
                 onClick={handleClose}
               >
-                Começar
+                Sākt
               </Button>
               {cityContext ? (
                 <Button
@@ -462,7 +460,7 @@ function AboutModal({
                     dismissAndThen(openLayersLegendModal);
                   }}
                 >
-                  Legenda do mapa
+                  Kartes leģenda
                 </Button>
               ) : null}
               {!cityContext ? (
@@ -475,7 +473,7 @@ function AboutModal({
                     dismissAndThen(openCityPicker);
                   }}
                 >
-                  Explorar cidades
+                  Apskatīt pilsētas
                 </Button>
               ) : null}
             </div>
@@ -483,89 +481,37 @@ function AboutModal({
 
           <footer className={`pt-5 border-t border-white border-opacity-10 -mb-2`}>
             <div className="flex flex-wrap items-center gap-4 w-full">
-              <div className="flex flex-wrap items-center gap-6 min-w-0">
-                <a
-                  href="https://www.gov.br/cidades/pt-br/acesso-a-informacao/acoes-e-programas/mobilidade-urbana/programa-bicicleta-brasil/premio-bicicleta-brasil/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={footerPartnerLinkClass}
-                >
-                  <img
-                    src={premiobicicletabrasil}
-                    alt="Prêmio Bicicleta Brasil"
-                    className="h-full w-auto max-h-8 object-contain"
-                  />
-                </a>
-                <a
-                  href="https://itdpbrasil.org/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={footerPartnerLinkClass}
-                >
-                  <img
-                    src={itdp}
-                    alt="ITDP Brasil"
-                    className="h-full w-auto max-h-8 object-contain"
-                  />
-                </a>
-                <a
-                  href="https://www.uniaodeciclistas.org.br/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={footerPartnerLinkClass}
-                >
-                  <img
-                    src={ucb}
-                    alt="União de Ciclistas do Brasil"
-                    className="h-full w-auto max-h-8 object-contain"
-                  />
-                </a>
+              <div className="flex flex-wrap items-center gap-2 min-w-0 text-xs opacity-60">
+                <span>
+                  Velokarte ir{' '}
+                  <a
+                    className={inlineLinkClass}
+                    href="https://github.com/cmdalbem/ciclomapa"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    CicloMapa
+                  </a>{' '}
+                  atzars Latvijai (GPL‑3.0).
+                </span>
               </div>
               <nav
                 className="flex items-center gap-2 ml-auto shrink-0 hidden sm:flex"
-                aria-label="Links do projeto"
+                aria-label="Projekta saites"
               >
                 <Tooltip
-                  title="Contato"
+                  title="Pirmkods GitHub"
                   placement="top"
                   zIndex={ABOUT_MODAL_FOOTER_TOOLTIP_Z_INDEX}
                 >
                   <a
-                    href="mailto:contato@ciclomapa.org.br"
-                    aria-label="Contato"
-                    className={footerIconLinkClass}
-                  >
-                    <HiEnvelope className="text-xl" aria-hidden />
-                  </a>
-                </Tooltip>
-                <Tooltip
-                  title="Código no GitHub"
-                  placement="top"
-                  zIndex={ABOUT_MODAL_FOOTER_TOOLTIP_Z_INDEX}
-                >
-                  <a
-                    href="https://github.com/cmdalbem/ciclomapa/"
+                    href="https://github.com/dzervelce/ciclomapa"
                     target="_blank"
                     rel="noopener noreferrer"
-                    aria-label="Código no GitHub"
+                    aria-label="Pirmkods GitHub"
                     className={footerIconLinkClass}
                   >
                     <FaGithub className="text-xl" aria-hidden />
-                  </a>
-                </Tooltip>
-                <Tooltip
-                  title="Tutoriais"
-                  placement="top"
-                  zIndex={ABOUT_MODAL_FOOTER_TOOLTIP_Z_INDEX}
-                >
-                  <a
-                    href="https://www.uniaodeciclistas.org.br/atuacao/ciclomapa/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Tutoriais"
-                    className={footerIconLinkClass}
-                  >
-                    <HiBookOpen className="text-xl" aria-hidden />
                   </a>
                 </Tooltip>
               </nav>

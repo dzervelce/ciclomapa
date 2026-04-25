@@ -61,8 +61,9 @@
   },
   {
     "name": "Bicicletários & paraciclos",
-    "shortName": "Bicicletários",
-    "description": "Estacionamentos de bicicleta variados, incluindo bicicletários e paraciclos. Sempre verifique a qualidade e segurança oferecida!",
+    "displayName": "Velosipēdu novietnes",
+    "shortName": "Novietnes",
+    "description": "Dažāda veida velosipēdu novietnes. Vienmēr pārbaudiet to kvalitāti un drošību!",
     "filters": [["amenity", "bicycle_parking"]],
     "type": "poi",
     "icon": "poi-bikeparking",
@@ -73,9 +74,9 @@
   },
   {
     "name": "Estações",
-    "displayName": "Estações de bike compartilhadas",
-    "shortName": "Estações",
-    "description": "Estações de compartilhamento de bicicletas (bike sharing) de diferentes operadoras.",
+    "displayName": "Velosipēdu nomas stacijas",
+    "shortName": "Nomas",
+    "description": "Velosipēdu koplietošanas (bike sharing) stacijas no dažādiem operatoriem.",
     "filters": [["amenity", "bicycle_rental"]],
     "type": "poi",
     "icon": "poi-rental",
@@ -86,9 +87,9 @@
   },
   {
     "name": "Lojas & oficinas",
-    "displayName": "Lojas e oficinas",
-    "shortName": "Lojas",
-    "description": "Estabelecimentos especializadas em venda e reparo de bicicletas e acessórios.",
+    "displayName": "Veikali un servisi",
+    "shortName": "Veikali",
+    "description": "Velosipēdu un piederumu pārdošanas un remonta uzņēmumi.",
     "filters": [["shop", "bicycle"]],
     "type": "poi",
     "icon": "poi-bikeshop",
@@ -99,8 +100,9 @@
   },
   {
     "name": "Ciclovia",
-    "displayName": "Ciclovias",
-    "description": "Vias protegidas e exclusivas para bicicletas. Ciclovias são separadas fisicamente por meio-fio, muretas ou outros tipos de segregação fixa que impedem a circulação de veículos.",
+    "displayName": "Velosipēdu ceļi",
+    "shortName": "Velosipēdu ceļš",
+    "description": "Pilnīgi atdalīts no auto un gājējiem; ar 2,25 m platu brauktuvi (normālais platums), piemērots velosatiksmes intensitātei līdz 150 V/h.",
     "protectionLevel": "Alta",
     "filters": [
       ["highway", "cycleway"],
@@ -122,9 +124,9 @@
   },
   {
     "name": "Calçada compartilhada",
-    "displayName": "Calçadas compartilhadas",
-    "shortName": "Calçadas",
-    "description": "Calçadas com sinalização para circulação compartilhada de bicicletas. Lembre-se que pedestres possuem a prioridade.",
+    "displayName": "Kopīgi gājēju un velo ceļi",
+    "shortName": "Kopīgs ceļš",
+    "description": "Viena josla, kur gājēji un velosipēdisti pārvietojas kopā (raksturīgi ārpus apdzīvotām vietām). Atcerieties, ka gājējiem ir priekšroka.",
     "protectionLevel": "Alta",
     "filters": [
       [
@@ -154,8 +156,9 @@
   },
   {
     "name": "Ciclofaixa",
-    "displayName": "Ciclofaixas",
-    "description": "Vias exclusivas para bicicletas mas sem segregação física, apenas demarcada por faixa pintada no chão ou outra sinalização",
+    "displayName": "Velojoslas",
+    "shortName": "Velojosla",
+    "description": "Iezīmēta josla uz brauktuves. Pieņemts veidot uz ceļiem, kur automašīnu ātrums ir līdz 50 km/h; ja lielāks – jāveido atdalīts velosipēdu ceļš.",
     "protectionLevel": "Média",
     "filters": [
       ["cycleway", "lane"],
@@ -176,8 +179,9 @@
   },
   {
     "name": "Ciclorrota",
-    "displayName": "Ciclorrotas",
-    "description": "Ruas compartilhadas com carros com sinalização especial que indica preferência das bicicletas.",
+    "displayName": "Jaukta satiksme",
+    "shortName": "Jaukta satiksme",
+    "description": "Velosipēdists pārvietojas pa kopējo brauktuvi kopā ar autotransportu (tipiski apdzīvotās vietās ar zemu intensitāti).",
     "protectionLevel": "Baixa",
     "filters": [
       ["cycleway", "buffered_lane"],
@@ -202,9 +206,9 @@
   },
   {
     "name": "Baixa velocidade",
-    "displayName": "Residenciais",
-    "shortName": "Residenciais",
-    "description": "Vias locais com limite de velocidade regulamentado de até 30km/h.",
+    "displayName": "Mierīgās ielas",
+    "shortName": "30 km/h",
+    "description": "Vietējās ielas ar reglamentētu ātruma ierobežojumu līdz 30 km/h.",
     "isActive": false,
     "filters": [
       ["maxspeed", "30"],
@@ -223,8 +227,9 @@
   },
   {
     "name": "Trilha",
-    "displayName": "Trilhas",
-    "description": "Caminhos não pavimentados com acesso permitido ou destinado a bicicleta.",
+    "displayName": "Takas",
+    "shortName": "Taka",
+    "description": "Nesegtas takas, kurās atļauta vai paredzēta velobraukšana.",
     "isActive": false,
     "filters": [
       [
@@ -254,8 +259,9 @@
   },
   {
     "name": "Proibido",
-    "displayName": "Proibidas",
-    "description": "Vias onde é proibido pedalar. Você pode descer da bicicleta e passar empurrando ela.",
+    "displayName": "Aizliegtas",
+    "shortName": "Aizliegts",
+    "description": "Vietas, kurās aizliegts braukt ar velosipēdu. Var nokāpt no velosipēda un to vest.",
     "isActive": false,
     "filters": [
       ["bicycle", "no"],

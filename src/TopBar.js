@@ -75,7 +75,7 @@ function TopBar(props) {
   const state = parts[1];
   let updatedAtStr;
   if (lastUpdate) {
-    updatedAtStr = lastUpdate.toLocaleString('pt-BR');
+    updatedAtStr = lastUpdate.toLocaleString('lv-LV');
   }
 
   const collaborateMenu = {
@@ -83,7 +83,7 @@ function TopBar(props) {
       {
         key: 'comment',
         icon: <IconComment />,
-        label: 'Adicionar comentário',
+        label: 'Pievienot komentāru',
       },
       {
         key: 'edit',
@@ -95,10 +95,10 @@ function TopBar(props) {
             rel="noopener noreferrer"
             href={getOsmUrl(lat, lng, z)}
           >
-            Editar mapa
+            Rediģēt karti
           </a>
         ) : (
-          'Editar mapa'
+          'Rediģēt karti'
         ),
       },
     ],
@@ -160,9 +160,8 @@ function TopBar(props) {
                             <Space size="small" orientation="vertical">
                               {lastUpdate && (
                                 <div>
-                                  O mapa de {city} que você está vendo é uma cópia dos dados obtidos
-                                  do OpenStreetMap há <b>{timeSince(lastUpdate)}</b> ({updatedAtStr}
-                                  ).
+                                  {city} kartes dati ir iegūti no OpenStreetMap pirms{' '}
+                                  <b>{timeSince(lastUpdate)}</b> ({updatedAtStr}).
                                 </div>
                               )}
 
@@ -173,20 +172,20 @@ function TopBar(props) {
                                 block
                                 onClick={forceUpdate}
                               >
-                                Atualizar
+                                Atjaunot
                               </Button>
                             </Space>
                           </div>
                         }
                       >
                         <div className="flex flex-center items-center gap-1 font-regular cursor text-xs mt-1 opacity-50 hover:opacity-100 transition-opacity duration-300">
-                          Atualizado há {timeSince(lastUpdate)}
+                          Atjaunots pirms {timeSince(lastUpdate)}
                         </div>
                       </Popover>
                     )
                   ) : (
                     <div className="flex flex-center items-center gap-1 font-regular cursor text-xs mt-1 opacity-50 hover:opacity-100 transition-opacity duration-300">
-                      Acessando dados do OpenStreetMap...
+                      Ielādē datus no OpenStreetMap...
                     </div>
                   ))}
               </div>
@@ -202,7 +201,7 @@ function TopBar(props) {
                     className={!isDarkMode ? 'border border-opacity-10 border-white' : 'opacity-50'}
                     shape="circle"
                     onClick={() => toggleTheme()}
-                    aria-label="Usar tema claro"
+                    aria-label="Gaišā tēma"
                   >
                     <IconSun />
                   </Button>
@@ -211,7 +210,7 @@ function TopBar(props) {
                     className={isDarkMode ? 'border border-opacity-10 border-white' : 'opacity-50'}
                     shape="circle"
                     onClick={() => toggleTheme()}
-                    aria-label="Usar tema escuro"
+                    aria-label="Tumšā tēma"
                   >
                     <IconMoon />
                   </Button>

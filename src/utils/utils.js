@@ -124,6 +124,8 @@ export function formatTimeAgo(dateInput, options = {}) {
 }
 
 // Thanks https://stackoverflow.com/questions/3177836/how-to-format-time-since-xxx-e-g-4-minutes-ago-similar-to-stack-exchange-site
+// Velokarte: Latvian unit suffixes. Note Latvian doesn't typically inflect units
+// in this short-form context; using nominative plural for all magnitudes.
 export function timeSince(date) {
   date = new Date(date);
 
@@ -132,26 +134,25 @@ export function timeSince(date) {
   var interval = Math.floor(seconds / 31536000);
 
   if (interval > 1) {
-    return interval + ' anos';
+    return interval + ' gadi';
   }
   interval = Math.floor(seconds / 2592000);
   if (interval > 1) {
-    return interval + ' meses';
+    return interval + ' mēneši';
   }
   interval = Math.floor(seconds / 86400);
   if (interval > 1) {
-    return interval + ' dias';
+    return interval + ' dienas';
   }
   interval = Math.floor(seconds / 3600);
   if (interval > 1) {
-    return interval + ' horas';
+    return interval + ' stundas';
   }
   interval = Math.floor(seconds / 60);
   if (interval > 1) {
-    return interval + ' minutos';
+    return interval + ' minūtes';
   }
-  // return Math.floor(seconds) + " segundos";
-  return ' poucos segundos';
+  return ' dažām sekundēm';
 }
 
 // Thanks https://stackoverflow.com/questions/990904/remove-accents-diacritics-in-a-string-in-javascript
