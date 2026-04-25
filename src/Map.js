@@ -718,7 +718,6 @@ class Map extends Component {
           'source-layer': sourceLayer,
           filter: filters,
           paint: {
-            'line-occlusion-opacity': 1,
             'line-opacity': [
               'case',
               ['boolean', ['feature-state', 'selected'], false],
@@ -755,7 +754,6 @@ class Map extends Component {
             'line-width': 20,
           },
           layout: {
-            'line-elevation-reference': 'ground',
           },
         },
         layerUnderneathName
@@ -772,7 +770,6 @@ class Map extends Component {
         description: l.description,
         filter: filters,
         paint: {
-          'line-occlusion-opacity': 1,
           'line-color': [
             'case',
             ['boolean', ['feature-state', 'selected'], false],
@@ -819,7 +816,6 @@ class Map extends Component {
           ...(l.style.lineStyle === 'dashed' && dashedLineStyle),
         },
         layout: {
-          'line-elevation-reference': 'ground',
           ...(l.style.lineStyle === 'dashed' ? {} : { 'line-join': 'round', 'line-cap': 'round' }),
         },
       },
@@ -918,7 +914,6 @@ class Map extends Component {
         description: l.description,
         filter: filters,
         paint: {
-          'line-occlusion-opacity': 1,
           'line-color': adjustColorBrightness(
             this.props.layers.find((layer) => layer.name === 'Ciclovia').style.lineColor,
             this.props.isDarkMode ? -0.6 : 0.5
@@ -935,7 +930,6 @@ class Map extends Component {
           ...(l.style.lineStyle === 'dashed' && dashedLineStyle),
         },
         layout: {
-          'line-elevation-reference': 'ground',
           ...(l.style.lineStyle === 'dashed' ? {} : { 'line-join': 'round', 'line-cap': 'round' }),
           visibility: 'none',
         },
@@ -1305,10 +1299,8 @@ class Map extends Component {
         layout: {
           'line-join': 'round',
           'line-cap': 'round',
-          'line-elevation-reference': 'ground',
         },
         paint: {
-          'line-occlusion-opacity': 1,
           'line-color': this.props.isDarkMode
             ? MAP_COLORS.DARK.ROUTE_PADDING_LINE
             : MAP_COLORS.LIGHT.ROUTE_PADDING_LINE,
@@ -1329,10 +1321,8 @@ class Map extends Component {
         layout: {
           'line-join': 'round',
           'line-cap': 'round',
-          'line-elevation-reference': 'ground',
         },
         paint: {
-          'line-occlusion-opacity': 1,
           'line-color':
             layerType === 'top'
               ? this.props.isDarkMode
@@ -1357,10 +1347,8 @@ class Map extends Component {
         layout: {
           'line-join': 'round',
           'line-cap': 'round',
-          'line-elevation-reference': 'ground',
         },
         paint: {
-          'line-occlusion-opacity': 1,
           'line-color':
             layerType === 'top'
               ? this.props.isDarkMode
@@ -1412,10 +1400,8 @@ class Map extends Component {
         layout: {
           'line-join': 'round',
           'line-cap': 'round',
-          'line-elevation-reference': 'ground',
         },
         paint: {
-          'line-occlusion-opacity': 1,
           'line-color':
             layerType === 'top'
               ? [
@@ -1508,10 +1494,8 @@ class Map extends Component {
         source: sourceId,
         layout: {
           'line-join': 'round',
-          'line-elevation-reference': 'ground',
         },
         paint: {
-          'line-occlusion-opacity': 1,
           'line-color': this.props.isDarkMode
             ? MAP_COLORS.DARK.ROUTE_BORDER
             : MAP_COLORS.LIGHT.ROUTE_BORDER,
@@ -2434,7 +2418,13 @@ class Map extends Component {
                 cityPickerLabelsPt[cityPickerLabelsPt.length - 1]
               }`;
 
-      const cityPicker = new MapboxGeocoder({
+      // Velokarte: MapboxGeocoder hits Mapbox's API which we don't have a token
+      // for. Constructor + onAdd both throw "Invalid token" and that breaks the
+      // rest of init. Wrap the whole picker setup in try/catch until we replace
+      // it with a Nominatim-backed MapLibre geocoder.
+      let cityPicker;
+      try {
+        cityPicker = new MapboxGeocoder({
         accessToken: mapboxgl.accessToken,
         mapboxgl: mapboxgl,
         language: 'pt-br',
@@ -2507,6 +2497,14 @@ class Map extends Component {
       };
 
       relocateCityPickerToModal();
+      } catch (err) {
+        console.warn(
+          '[Velokarte] MapboxGeocoder unavailable (no Mapbox token); skipping city picker. ' +
+            'TODO: replace with maplibre-gl-geocoder + Nominatim adapter.',
+          err
+        );
+        cityPicker = null;
+      }
 
       const geolocate = new mapboxgl.GeolocateControl({
         positionOptions: {
