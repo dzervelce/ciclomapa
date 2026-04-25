@@ -211,6 +211,6 @@ export const GOOGLE_PLACES_API_KEY = process.env.REACT_APP_GOOGLE_PLACES_API_KEY
 // so any token can resolve them. Source JSON is checked into
 // repo root: velokarte-dark-style.json / velokarte-light-style.json.
 export const MAP_STYLES = {
-  DARK: 'mapbox://styles/edgarsdna/cmoetl9j801br01sd55meaf3p',
-  LIGHT: 'mapbox://styles/edgarsdna/cmoetkhvu002w01sah1eu942t',
+  DARK: 'mapbox://styles/edgarsdna/cmoeuk8nk002v01sbfd3858yy',
+  LIGHT: 'mapbox://styles/edgarsdna/cmoeukfo6000b01qy1kdq0zbw',
 };
