@@ -205,12 +205,12 @@ export const MAPBOX_ACCESS_TOKEN = process.env.REACT_APP_MAPBOX_ACCESS_TOKEN;
 
 export const GOOGLE_PLACES_API_KEY = process.env.REACT_APP_GOOGLE_PLACES_API_KEY;
 
-// Velokarte: using cmdalbem's public Mapbox Studio styles (same as the
-// upstream CicloMapa app). Tuned specifically for cycling-map context —
-// building density, label thresholds, simplified road palette. Swap to
-// 'mapbox://styles/mapbox/streets-v12' / 'dark-v11' for stock Mapbox
-// cartography, or to MAPTILER_STYLE_URL for MapTiler tiles.
+// Velokarte: custom Mapbox Studio styles owned by edgarsdna's account.
+// Forked from cmdalbem's upstream styles, with cmdalbem-private bits
+// (sprite, glyphs, drinking-water tileset) swapped to Mapbox defaults
+// so any token can resolve them. Source JSON is checked into
+// repo root: velokarte-dark-style.json / velokarte-light-style.json.
 export const MAP_STYLES = {
-  DARK: 'mapbox://styles/cmdalbem/ckgpww8gi2nk619kkl0zrlodm',
-  LIGHT: 'mapbox://styles/cmdalbem/cjxseldep7c0a1doc7ezn6aeb',
+  DARK: 'mapbox://styles/edgarsdna/cmoetl9j801br01sd55meaf3p',
+  LIGHT: 'mapbox://styles/edgarsdna/cmoetkhvu002w01sah1eu942t',
 };
