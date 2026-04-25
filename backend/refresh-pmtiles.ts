@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { rename, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, rename, unlink } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 const SCRIPT = '/srv/velokarte/scripts/generate-pmtiles.js';
@@ -36,6 +36,22 @@ function runScript(): Promise<number> {
   });
 }
 
+/**
+ * Move a file atomically when on the same filesystem; fall back to copy+delete
+ * for cross-device cases (rename() raises EXDEV when src and dest are on
+ * different filesystems — common here because systemd's PrivateTmp puts /tmp
+ * on tmpfs while /srv/velokarte is on ext4).
+ */
+async function moveAtomicOrCopy(src: string, dest: string): Promise<void> {
+  try {
+    await rename(src, dest);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EXDEV') throw err;
+    await copyFile(src, dest);
+    await unlink(src);
+  }
+}
+
 async function main() {
   await mkdir(dirname(OUTPUT_FINAL), { recursive: true });
   const code = await runScript();
@@ -44,7 +60,7 @@ async function main() {
     console.error(`generate-pmtiles exited ${code} — leaving existing pmtiles in place.`);
     process.exit(0);
   }
-  await rename(OUTPUT_TMP, OUTPUT_FINAL);
+  await moveAtomicOrCopy(OUTPUT_TMP, OUTPUT_FINAL);
   console.log(`PMTiles refreshed: ${OUTPUT_FINAL}`);
   process.exit(0);
 }
