@@ -52,13 +52,15 @@ async function handleCity(slug: string, req: Request): Promise<Response> {
     if (!body?.name || !body?.geoJson || !body?.lengths) {
       return badRequest('missing_fields');
     }
+    // bun:sql auto-encodes JS objects as JSON for jsonb columns. Don't
+    // pre-stringify (was causing double-encoding into a JSONB string scalar).
     await sql`
       INSERT INTO cities (slug, name, geojson, lengths, updated_at)
       VALUES (
         ${slug},
         ${body.name},
-        ${JSON.stringify(body.geoJson)}::jsonb,
-        ${JSON.stringify(body.lengths)}::jsonb,
+        ${body.geoJson},
+        ${body.lengths},
         now()
       )
       ON CONFLICT (slug) DO UPDATE SET
@@ -97,7 +99,7 @@ async function handleStatsItem(slug: string, req: Request): Promise<Response> {
     if (!body?.lengths) return badRequest('missing_fields');
     await sql`
       INSERT INTO stats (slug, lengths, updated_at)
-      VALUES (${slug}, ${JSON.stringify(body.lengths)}::jsonb, now())
+      VALUES (${slug}, ${body.lengths}, now())
       ON CONFLICT (slug) DO UPDATE SET
         lengths    = EXCLUDED.lengths,
         updated_at = now()
