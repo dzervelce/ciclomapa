@@ -9,13 +9,11 @@ import turfCircle from '@turf/circle';
 import 'mapbox-gl/dist/maplibre-gl.css';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
-// Velokarte: PMTiles support deferred. The mapbox-pmtiles package targets
-// Mapbox GL JS (uses Style.setSourceType which doesn't exist on MapLibre).
-// Once we replace it with the standard `pmtiles` library + addProtocol,
-// re-enable this import. Until then, USE_PMTILES_SOURCE in constants.js
-// gates all the call sites below.
+// Velokarte: PMTiles support deferred. mapbox-pmtiles targets Mapbox GL JS
+// (uses Style.setSourceType which doesn't exist on MapLibre). Once we replace
+// it with the standard `pmtiles` library + addProtocol, re-enable this.
+// USE_PMTILES_SOURCE in constants.js gates all the call sites below.
 // import { PmTilesSource } from 'mapbox-pmtiles';
-const PmTilesSource = { SOURCE_TYPE: 'pmtile-disabled', getHeader: () => Promise.reject(new Error('PMTiles disabled')) };
 
 import {
   MAPBOX_ACCESS_TOKEN,
@@ -58,6 +56,14 @@ import { arrowIconsByLayer, arrowIcons, arrowSdf, iconsMap } from './features/ma
 import { reverseGeocodePlace } from './features/map/geocoding.js';
 
 import './Map.css';
+
+// Velokarte: stub for the disabled mapbox-pmtiles. References to PmTilesSource
+// elsewhere in the file are inside `if (USE_PMTILES_SOURCE)` blocks (now false),
+// so this stub never runs in practice — it just keeps the symbol defined.
+const PmTilesSource = {
+  SOURCE_TYPE: 'pmtile-disabled',
+  getHeader: () => Promise.reject(new Error('PMTiles disabled')),
+};
 
 /**
  * Single camera behavior for focusing the map on a city (slug navigation, city picker).
