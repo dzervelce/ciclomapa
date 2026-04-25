@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    # Velokarte: upstream CI runs yarn --frozen-lockfile which doesn't apply
+    # to our Bun workflow. Restrict to upstream-tracking branch only.
+    branches: ["upstream-master"]
   pull_request:
 
 jobs:

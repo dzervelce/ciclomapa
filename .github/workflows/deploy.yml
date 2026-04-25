@@ -20,6 +20,9 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Remove yarn.lock (we use Bun)
+        run: rm -f yarn.lock
+
       - name: Install frontend deps
         run: bun install
 
