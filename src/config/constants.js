@@ -26,12 +26,9 @@ export const LENGTH_COUNTED_LAYER_IDS = [
   // 'proibido',
 ];
 
-export const OVERPASS_SERVERS = [
-  'https://overpass.private.coffee/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.osm.jp/api/interpreter',
-];
+// Velokarte: same-origin proxy. Public Overpass servers have unreliable CORS;
+// /api/overpass forwards to overpass-api.de via Bun.
+export const OVERPASS_SERVERS = ['/api/overpass'];
 
 // Velokarte: empty by default — fill in only if a Latvian city's geocoded name
 // fails to resolve to its OSM relation id automatically.

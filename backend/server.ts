@@ -122,6 +122,66 @@ async function handleStatsList(req: Request): Promise<Response> {
   );
 }
 
+/**
+ * Same-origin proxy for Overpass API queries.
+ *
+ * Public Overpass servers have unreliable CORS, so the browser can't hit
+ * them directly. Frontend posts (or GETs) to /api/overpass; we forward to
+ * overpass-api.de and stream the response back.
+ *
+ * Accepts both GET (?data=…) and POST (form body or raw query) since
+ * different OSM client libs use different conventions.
+ */
+const OVERPASS_UPSTREAM = 'https://overpass-api.de/api/interpreter';
+const OVERPASS_UA = 'velokarte/0.1 (+https://velokarte.pocs.dev)';
+
+async function handleOverpass(req: Request): Promise<Response> {
+  let dataParam: string | null = null;
+
+  if (req.method === 'GET') {
+    dataParam = new URL(req.url).searchParams.get('data');
+  } else if (req.method === 'POST') {
+    const raw = await req.text();
+    if (raw.startsWith('data=')) {
+      // Standard form-urlencoded POST (what jQuery $.ajax does by default).
+      dataParam = decodeURIComponent(raw.slice(5).replace(/\+/g, ' '));
+    } else {
+      // Raw query body — also accepted by Overpass.
+      dataParam = raw;
+    }
+  } else {
+    return methodNotAllowed();
+  }
+
+  if (!dataParam) return badRequest('missing_data');
+
+  try {
+    const upstreamRes = await fetch(OVERPASS_UPSTREAM, {
+      method: 'POST',
+      headers: {
+        'User-Agent': OVERPASS_UA,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body: 'data=' + encodeURIComponent(dataParam),
+    });
+
+    return new Response(upstreamRes.body, {
+      status: upstreamRes.status,
+      headers: {
+        'Content-Type':
+          upstreamRes.headers.get('Content-Type') || 'application/json',
+      },
+    });
+  } catch (err) {
+    console.error('[overpass-proxy] failed:', err);
+    return json(
+      { error: 'overpass_proxy_failed', detail: String(err) },
+      { status: 502 }
+    );
+  }
+}
+
 Bun.serve({
   port: PORT,
   async fetch(req) {
@@ -144,6 +204,10 @@ Bun.serve({
 
     if (path === '/api/stats') {
       return handleStatsList(req);
+    }
+
+    if (path === '/api/overpass') {
+      return handleOverpass(req);
     }
 
     return notFound();
