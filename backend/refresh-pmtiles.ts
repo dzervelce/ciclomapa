@@ -13,8 +13,10 @@ const NODE_PATH = '/srv/velokarte/backend/node_modules';
 
 function runScript(): Promise<number> {
   return new Promise((resolve) => {
+    // Use Bun rather than Node so we don't have to install Node on the VPS;
+    // Bun is Node-compatible and resolves require() against NODE_PATH the same way.
     const proc = spawn(
-      'node',
+      '/usr/local/bin/bun',
       [SCRIPT, '--area', 'Latvia', '--output', OUTPUT_TMP],
       {
         env: { ...process.env, NODE_PATH },
