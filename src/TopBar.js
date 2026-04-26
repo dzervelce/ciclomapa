@@ -198,26 +198,28 @@ function TopBar(props) {
           <div className="nav-links font-white">
             {!embedMode ? (
               <div className="hidden sm:flex gap-2 items-center">
-                <Button
-                  type={showStreetLamps ? 'default' : 'text'}
-                  className={
-                    showStreetLamps
-                      ? 'glass-bg border border-opacity-10 border-white'
-                      : 'glass-bg opacity-60 hover:opacity-100 transition-opacity'
-                  }
-                  shape="circle"
-                  onClick={() => toggleStreetLamps && toggleStreetLamps()}
-                  aria-label="Ielu apgaismojums"
-                  aria-pressed={showStreetLamps ? 'true' : 'false'}
-                  title={showStreetLamps ? 'Slēpt ielu apgaismojumu' : 'Rādīt ielu apgaismojumu'}
-                  style={
-                    showStreetLamps
-                      ? { color: '#FFD27A', boxShadow: '0 0 14px rgba(255, 210, 122, 0.55)' }
-                      : undefined
-                  }
-                >
-                  <IconLamp />
-                </Button>
+                {isDarkMode && (
+                  <Button
+                    type={showStreetLamps ? 'default' : 'text'}
+                    className={
+                      showStreetLamps
+                        ? 'glass-bg border border-opacity-10 border-white'
+                        : 'glass-bg opacity-60 hover:opacity-100 transition-opacity'
+                    }
+                    shape="circle"
+                    onClick={() => toggleStreetLamps && toggleStreetLamps()}
+                    aria-label="Ielu apgaismojums"
+                    aria-pressed={showStreetLamps ? 'true' : 'false'}
+                    title={showStreetLamps ? 'Slēpt ielu apgaismojumu' : 'Rādīt ielu apgaismojumu'}
+                    style={
+                      showStreetLamps
+                        ? { color: '#FFD27A', boxShadow: '0 0 14px rgba(255, 210, 122, 0.55)' }
+                        : undefined
+                    }
+                  >
+                    <IconLamp />
+                  </Button>
+                )}
                 <Space.Compact className="glass-bg rounded-full overflow-hidden">
                   <Button
                     type={!isDarkMode ? 'default' : 'text'}

@@ -660,7 +660,7 @@ class Map extends Component {
     }
 
     const dark = !!this.props.isDarkMode;
-    const visible = this.props.showStreetLamps ? 'visible' : 'none';
+    const visible = this.props.showStreetLamps && dark ? 'visible' : 'none';
 
     if (this.map.getLayer(STREET_LAMP_LAYER_BLOOM)) {
       this.map.removeLayer(STREET_LAMP_LAYER_BLOOM);
@@ -743,9 +743,10 @@ class Map extends Component {
     }
   }
 
-  setStreetLampVisibility(visible) {
+  setStreetLampVisibility() {
     if (!this.map) return;
-    const value = visible ? 'visible' : 'none';
+    const value =
+      this.props.showStreetLamps && this.props.isDarkMode ? 'visible' : 'none';
     [STREET_LAMP_LAYER_BLOOM, STREET_LAMP_LAYER_CORE].forEach((id) => {
       if (this.map.getLayer(id)) {
         this.map.setLayoutProperty(id, 'visibility', value);
@@ -2047,7 +2048,7 @@ class Map extends Component {
     }
 
     if (this.props.showStreetLamps !== prevProps.showStreetLamps) {
-      this.setStreetLampVisibility(this.props.showStreetLamps);
+      this.setStreetLampVisibility();
       if (this.props.showStreetLamps) {
         this.fetchStreetLamps();
       } else if (this.streetLampAbort) {
