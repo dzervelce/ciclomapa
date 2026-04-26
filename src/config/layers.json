@@ -109,6 +109,7 @@
       ["cycleway", "track"],
       ["cycleway:left", "track"],
       ["cycleway:right", "track"],
+      ["cycleway:both", "track"],
       ["cycleway", "opposite_track"],
       ["cycleway:left", "opposite_track"],
       ["cycleway:right", "opposite_track"]
@@ -143,7 +144,8 @@
       ],
       ["cycleway", "sidepath"],
       ["cycleway:left", "sidepath"],
-      ["cycleway:right", "sidepath"]
+      ["cycleway:right", "sidepath"],
+      ["cycleway:both", "sidepath"]
     ],
     "style": {
       "lineColor": "#386641",
@@ -187,12 +189,15 @@
       ["cycleway", "buffered_lane"],
       ["cycleway:left", "buffered_lane"],
       ["cycleway:right", "buffered_lane"],
+      ["cycleway:both", "buffered_lane"],
       ["cycleway", "shared_lane"],
       ["cycleway:left", "shared_lane"],
       ["cycleway:right", "shared_lane"],
+      ["cycleway:both", "shared_lane"],
       ["cycleway", "share_busway"],
       ["cycleway:left", "share_busway"],
       ["cycleway:right", "share_busway"],
+      ["cycleway:both", "share_busway"],
       ["cycleway", "opposite_share_busway"]
     ],
     "style": {
