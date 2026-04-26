@@ -51,6 +51,13 @@ import { reverseGeocodePlace } from './features/map/geocoding.js';
 
 import './Map.css';
 
+// Wrap a Mapbox filter so it only matches a specific geometry type. Used to
+// keep line/arrow layers off polygon (area=yes) features and vice versa.
+const asLineFilter = (filter) =>
+  filter == null ? null : ['all', filter, ['==', ['geometry-type'], 'LineString']];
+const asPolygonFilter = (filter) =>
+  filter == null ? null : ['all', filter, ['==', ['geometry-type'], 'Polygon']];
+
 /**
  * Single camera behavior for focusing the map on a city (slug navigation, city picker).
  * @param {mapboxgl.Map} map
@@ -372,10 +379,13 @@ class Map extends Component {
         const refresh = (id, expr) => {
           if (this.map.getLayer(id)) this.map.setFilter(id, expr);
         };
-        refresh(layer.id + '--pmtiles', f.center);
-        refresh(layer.id + '--left--pmtiles', f.left);
-        refresh(layer.id + '--right--pmtiles', f.right);
-        refresh(layer.id + '--routes-active--pmtiles', f.full);
+        refresh(layer.id + '--pmtiles', asLineFilter(f.center));
+        refresh(layer.id + '--left--pmtiles', asLineFilter(f.left));
+        refresh(layer.id + '--right--pmtiles', asLineFilter(f.right));
+        refresh(layer.id + '--routes-active--pmtiles', asLineFilter(f.full));
+        refresh(layer.id + '--area--pmtiles', asPolygonFilter(f.full));
+        refresh(layer.id + '--area-outline--pmtiles', asPolygonFilter(f.full));
+        refresh(layer.id + '--area-routes-active--pmtiles', asPolygonFilter(f.full));
       } else if (layer.type === 'poi' && layer.filters) {
         const layerId = layer.id + '--pmtiles';
         const circlesLayerId = layerId + 'circles';
@@ -779,6 +789,10 @@ class Map extends Component {
     const leftLayerId = l.id + '--left' + sourceSuffix;
     const rightLayerId = l.id + '--right' + sourceSuffix;
     const routesActiveLayerId = l.id + '--routes-active' + sourceSuffix;
+    const areaLayerId = l.id + '--area' + sourceSuffix;
+    const areaOutlineLayerId = l.id + '--area-outline' + sourceSuffix;
+    const areaInteractiveLayerId = l.id + '--area-interactive' + sourceSuffix;
+    const routesActiveAreaLayerId = l.id + '--area-routes-active' + sourceSuffix;
 
     // Per-side line offsets (px) at z10 / z18. Sign is conventional Mapbox:
     // positive = right of the way's drawn direction.
@@ -819,7 +833,7 @@ class Map extends Component {
           type: 'line',
           source: sourceId,
           'source-layer': sourceLayer,
-          filter: filters,
+          filter: asLineFilter(filters),
           paint: {
             'line-opacity': [
               'case',
@@ -879,7 +893,7 @@ class Map extends Component {
         'source-layer': sourceLayer,
         name: l.name,
         description: l.description,
-        filter: centerFilter,
+        filter: asLineFilter(centerFilter),
         paint: {
           'line-color': cyclepathLineColor,
           'line-width': cyclepathLineWidth,
@@ -908,7 +922,7 @@ class Map extends Component {
           'source-layer': sourceLayer,
           name: l.name,
           description: l.description,
-          filter,
+          filter: asLineFilter(filter),
           paint: {
             'line-color': cyclepathLineColor,
             'line-width': cyclepathLineWidth,
@@ -993,7 +1007,7 @@ class Map extends Component {
             type: 'symbol',
             source: sourceId,
             'source-layer': sourceLayer,
-            filter,
+            filter: asLineFilter(filter),
             minzoom: 12,
             layout: { ...arrowLayout, 'icon-offset': iconOffset },
             paint: arrowPaint,
@@ -1018,7 +1032,7 @@ class Map extends Component {
         'source-layer': sourceLayer,
         name: l.name + ' (Routes Active)',
         description: l.description,
-        filter: filters,
+        filter: asLineFilter(filters),
         paint: {
           'line-color': adjustColorBrightness(
             this.props.layers.find((layer) => layer.name === 'Ciclovia').style.lineColor,
@@ -1044,9 +1058,107 @@ class Map extends Component {
       layerUnderneathName
     );
 
-    // Only osmdata is interactive
+    // Area rendering for closed ways tagged area=yes (e.g. pedestrian plazas
+    // with bicycle=designated). Without these, Mapbox would only trace the
+    // polygon boundary as a line — misleading because it implies an edge
+    // route around an otherwise-usable surface. We draw a soft fill plus a
+    // quiet outline; sided variants and arrows are suppressed by the
+    // asLineFilter wrappers above.
+    const areaFillColor = adjustColorBrightness(
+      l.style.lineColor,
+      this.props.isDarkMode ? -0.2 : 0.15,
+      'hsl'
+    );
+    const areaFillOpacity = [
+      'case',
+      ['boolean', ['feature-state', 'selected'], false],
+      0.32,
+      ['boolean', ['feature-state', 'hover'], false],
+      0.24,
+      this.props.isDarkMode ? 0.18 : 0.14,
+    ];
+
+    this.map.addLayer(
+      {
+        id: areaLayerId,
+        type: 'fill',
+        source: sourceId,
+        'source-layer': sourceLayer,
+        name: l.name,
+        description: l.description,
+        filter: asPolygonFilter(filters),
+        paint: {
+          'fill-color': areaFillColor,
+          'fill-opacity': areaFillOpacity,
+        },
+      },
+      layerUnderneathName
+    );
+
+    this.map.addLayer(
+      {
+        id: areaOutlineLayerId,
+        type: 'line',
+        source: sourceId,
+        'source-layer': sourceLayer,
+        filter: asPolygonFilter(filters),
+        paint: {
+          'line-color': adjustColorBrightness(
+            l.style.lineColor,
+            this.props.isDarkMode ? -0.1 : 0.1
+          ),
+          'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 18, 1.5],
+          'line-opacity': 0.32,
+        },
+        layout: { 'line-join': 'round' },
+      },
+      layerUnderneathName
+    );
+
     if (sourceId === 'osmdata') {
-      this.map.on('click', interactiveLayerId, (e) => {
+      // Transparent fill mirrors the interactive line layer for click/hover.
+      this.map.addLayer(
+        {
+          id: areaInteractiveLayerId,
+          type: 'fill',
+          source: sourceId,
+          'source-layer': sourceLayer,
+          filter: asPolygonFilter(filters),
+          paint: {
+            'fill-color': areaFillColor,
+            'fill-opacity': 0,
+          },
+        },
+        layerUnderneathName
+      );
+    }
+
+    // Muted area variant for routes-active mode, paralleling routesActiveLayerId.
+    this.map.addLayer(
+      {
+        id: routesActiveAreaLayerId,
+        type: 'fill',
+        source: sourceId,
+        'source-layer': sourceLayer,
+        filter: asPolygonFilter(filters),
+        paint: {
+          'fill-color': adjustColorBrightness(
+            this.props.layers.find((layer) => layer.name === 'Ciclovia').style.lineColor,
+            this.props.isDarkMode ? -0.6 : 0.5
+          ),
+          'fill-opacity': this.props.isDarkMode ? 0.12 : 0.09,
+        },
+        layout: { visibility: 'none' },
+      },
+      layerUnderneathName
+    );
+
+    // Only osmdata is interactive — handlers fire for both line interactive
+    // (cycleways) and area interactive (plazas with bicycle=designated etc.).
+    if (sourceId === 'osmdata') {
+      const interactiveLayerIds = [interactiveLayerId, areaInteractiveLayerId];
+
+      this.map.on('click', interactiveLayerIds, (e) => {
         if (e.target.getZoom() < INTERACTIVE_LAYERS_ZOOM_THRESHOLD) {
           return;
         }
@@ -1089,7 +1201,7 @@ class Map extends Component {
       });
 
       // Since these structures are contiguous we need to use mousemove instead of mouseenter/mouseleave
-      this.map.on('mousemove', interactiveLayerId, (e) => {
+      this.map.on('mousemove', interactiveLayerIds, (e) => {
         if (e.features.length > 0) {
           if (
             e.target.getZoom() < INTERACTIVE_LAYERS_ZOOM_THRESHOLD ||
@@ -1124,8 +1236,7 @@ class Map extends Component {
         }
       });
 
-      this.map.on('mouseleave', interactiveLayerId, () => {
-        console.debug('mouseleave', interactiveLayerId);
+      this.map.on('mouseleave', interactiveLayerIds, () => {
         if (self.hoveredCycleway) {
           self.map.setFeatureState(
             {
@@ -2311,18 +2422,30 @@ class Map extends Component {
 
           const leftLayerId = layer.id + '--left' + sourceSuffix;
           const rightLayerId = layer.id + '--right' + sourceSuffix;
+          const areaLayerId = layer.id + '--area' + sourceSuffix;
+          const areaOutlineLayerId = layer.id + '--area-outline' + sourceSuffix;
+          const areaInteractiveLayerId = layer.id + '--area-interactive' + sourceSuffix;
+          const routesActiveAreaLayerId = layer.id + '--area-routes-active' + sourceSuffix;
 
           // Swap between normal and routes-active variants:
-          //   - routesActiveLayerId: visible only WITH routes (muted background)
-          //   - baseLayerId, side variants & interactiveLayerId: only WITHOUT routes
+          //   - routes-active variants: visible only WITH routes (muted background)
+          //   - everything else: only WITHOUT routes
           const baseStatus = layer.isActive && !hasRoutes ? 'visible' : 'none';
           const routesStatus = layer.isActive && hasRoutes ? 'visible' : 'none';
-          [baseLayerId, leftLayerId, rightLayerId, interactiveLayerId].forEach((id) => {
+          [
+            baseLayerId,
+            leftLayerId,
+            rightLayerId,
+            interactiveLayerId,
+            areaLayerId,
+            areaOutlineLayerId,
+            areaInteractiveLayerId,
+          ].forEach((id) => {
             if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', baseStatus);
           });
-          if (map.getLayer(routesActiveLayerId)) {
-            map.setLayoutProperty(routesActiveLayerId, 'visibility', routesStatus);
-          }
+          [routesActiveLayerId, routesActiveAreaLayerId].forEach((id) => {
+            if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', routesStatus);
+          });
 
           // Handle arrow layer visibility (same as base layer) — center + sides
           [arrowLayerId, arrowLayerId + '--left', arrowLayerId + '--right'].forEach((id) => {
