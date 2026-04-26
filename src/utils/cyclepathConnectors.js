@@ -35,16 +35,10 @@ function isSidedRoad(tags) {
 
 // A way whose cyclepath rendering is on its own centerline (not a road
 // carrying a painted lane). These are the candidates whose endpoints we try
-// to bridge to nearby sided roads.
+// to bridge to nearby sided roads. Restricted to highway=cycleway for now —
+// footways/pedestrians often run alongside roads and produce spurious bridges.
 function isCenterCyclewayWay(tags) {
-  if (tags.highway === 'cycleway') return true;
-  if (
-    (tags.highway === 'footway' || tags.highway === 'pedestrian') &&
-    (tags.bicycle === 'designated' || tags.bicycle === 'yes')
-  ) {
-    return true;
-  }
-  return false;
+  return tags.highway === 'cycleway';
 }
 
 export function augmentWithCyclepathConnectors(geoJson, rawElements) {
@@ -56,20 +50,29 @@ export function augmentWithCyclepathConnectors(geoJson, rawElements) {
   // road. We need the index, not just endpoints, because a separate cycleway
   // typically meets the road at one of the road's interior nodes.
   const sidedAtNode = new Map();
+  // Count how many center-cycleway ways use each node. If more than one, the
+  // cycleway network continues through that node and no bridge is needed.
+  const centerCountAtNode = new Map();
   for (const el of rawElements) {
     if (el.type !== 'way') continue;
     const tags = el.tags || {};
-    if (!isSidedRoad(tags)) continue;
-    if (!Array.isArray(el.nodes) || !Array.isArray(el.geometry)) continue;
-    if (el.nodes.length !== el.geometry.length) continue;
-    el.nodes.forEach((nid, idx) => {
-      let arr = sidedAtNode.get(nid);
-      if (!arr) {
-        arr = [];
-        sidedAtNode.set(nid, arr);
+    if (Array.isArray(el.nodes) && Array.isArray(el.geometry) && el.nodes.length === el.geometry.length) {
+      if (isSidedRoad(tags)) {
+        el.nodes.forEach((nid, idx) => {
+          let arr = sidedAtNode.get(nid);
+          if (!arr) {
+            arr = [];
+            sidedAtNode.set(nid, arr);
+          }
+          arr.push({ way: el, indexInWay: idx });
+        });
       }
-      arr.push({ way: el, indexInWay: idx });
-    });
+      if (isCenterCyclewayWay(tags)) {
+        for (const nid of el.nodes) {
+          centerCountAtNode.set(nid, (centerCountAtNode.get(nid) || 0) + 1);
+        }
+      }
+    }
   }
 
   const connectors = [];
@@ -92,6 +95,10 @@ export function augmentWithCyclepathConnectors(geoJson, rawElements) {
       const nodeId = el.nodes[ep.idx];
       const matches = sidedAtNode.get(nodeId);
       if (!matches || matches.length === 0) continue;
+
+      // Skip if another center-cycleway way also uses this node — the
+      // cycleway network visually continues through, no bridge needed.
+      if ((centerCountAtNode.get(nodeId) || 0) > 1) continue;
 
       // Prefer a target way different from the source. Source shouldn't be
       // sided itself per isCenterCyclewayWay, but be safe.
@@ -179,6 +186,16 @@ export function augmentWithCyclepathConnectors(geoJson, rawElements) {
             [offsetLng, offsetLat],
           ],
         },
+      });
+      console.debug('[cyclepath connector emitted]', {
+        sourceWayId: el.id,
+        sourceTags: tags,
+        endpoint: ep.role,
+        endpointCoord: [epPt.lon, epPt.lat],
+        targetRoadId: targetWay.id,
+        targetTags: targetWay.tags,
+        offsetCoord: [offsetLng, offsetLat],
+        sideSign,
       });
     }
   }
