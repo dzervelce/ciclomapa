@@ -2,12 +2,14 @@
 // where they meet a road carrying sided cycleway tags. The cycleway's
 // terminal vertex is replaced by a point ~3 m perpendicular to the road,
 // on the side corresponding to the lane traveling in the cyclist's direction
-// (right-hand traffic). The cycleway visually lands on the road's offset
-// side rendering instead of stopping at the road centerline.
+// (right-hand traffic). The cycleway's last segment now points directly at
+// the offset side-rendering of the road instead of stopping at the OSM
+// centerline node.
 //
-// We modify the existing GeoJSON feature in place rather than emitting a
-// synthetic connector — extending the original way avoids extra arrows or
-// stub segments and keeps the visual rendering continuous.
+// We REPLACE the terminal vertex rather than append. Appending creates a
+// short lateral segment that Mapbox's `symbol-placement: line` arrow layer
+// happily decorates with its own oneway arrow, producing what reads as a
+// stub branch. Replacing keeps the line a single segment per arrow.
 
 const SIDED_KEYS = ['cycleway:left', 'cycleway:right', 'cycleway:both'];
 
@@ -180,12 +182,21 @@ export function augmentWithCyclepathConnectors(geoJson, rawElements) {
       const offsetLng = epPt.lon + offsetXMeters / mPerLng;
       const offsetLat = epPt.lat + offsetYMeters / mPerLat;
 
-      // Append (or prepend) the offset point to the cycleway's geometry —
-      // the line bends naturally to land on the road's side rendering.
+      // Replace the terminal coordinate so the cycleway's last segment
+      // runs straight to the offset point. Appending would add a separate
+      // micro-segment that Mapbox decorates with its own oneway arrow.
+      // Guard: skip the rewrite if the way's last segment is shorter than
+      // the offset distance, otherwise the endpoint rotates too far.
+      const neighborPt = ep.idx === 0 ? sg[1] : sg[last - 1];
+      const dxN = (epPt.lon - neighborPt.lon) * mPerLng;
+      const dyN = (epPt.lat - neighborPt.lat) * mPerLat;
+      const lastSegMeters = Math.sqrt(dxN * dxN + dyN * dyN);
+      if (lastSegMeters < OFFSET_METERS * 1.5) continue;
+
       if (ep.idx === 0) {
-        coords.unshift([offsetLng, offsetLat]);
+        coords[0] = [offsetLng, offsetLat];
       } else {
-        coords.push([offsetLng, offsetLat]);
+        coords[coords.length - 1] = [offsetLng, offsetLat];
       }
       bendsApplied++;
     }
