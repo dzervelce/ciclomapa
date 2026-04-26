@@ -1,20 +1,17 @@
 #!/usr/bin/env bun
 // Patches velokarte-{light,dark}-style.json:
-//   1. composite source -> mapbox-streets-v8 only (Firefox 403 workaround)
-//   2. drop terrain-v2-only layers (landcover, hillshade)
-//   3. IBM Plex Sans Medium/Italic -> Regular (only Regular is uploaded)
-//   4. wrap ["get","sizerank"] in coalesce to handle null
+//   1. IBM Plex Sans Medium/Italic -> Regular (only Regular is uploaded to
+//      the edgarsdna Mapbox account; Studio rewrites glyphs URL on upload)
+//   2. wrap ["get","sizerank"] in coalesce to handle null features
 // After running: re-upload both JSONs to Mapbox Studio.
+//
+// Note: do NOT touch the composite source URL or remove terrain-v2 layers.
+// Firefox 403s on Mapbox vector tiles are a browser-side issue (see CLAUDE.md),
+// not solvable from the style. Removing terrain-v2 only breaks landcover and
+// hillshade in Chrome/Safari.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-
-const TERRAIN_V2_LAYER_IDS = new Set([
-  'landcover',
-  'landcover-OG',
-  'hillshade',
-  'hillshade-OG',
-]);
 
 function coalesceSizerank(node: unknown): unknown {
   if (Array.isArray(node)) {
@@ -39,19 +36,7 @@ function patch(file: string): void {
   const path = resolve(file);
   const style = JSON.parse(readFileSync(path, 'utf8'));
 
-  // 1. Source URL
-  if (style.sources?.composite?.url) {
-    style.sources.composite.url = 'mapbox://mapbox.mapbox-streets-v8';
-  }
-
-  // 2. Drop terrain-v2 layers
-  const before = style.layers.length;
-  style.layers = style.layers.filter(
-    (l: { id?: string }) => !(l.id && TERRAIN_V2_LAYER_IDS.has(l.id))
-  );
-  const dropped = before - style.layers.length;
-
-  // 3. Font replacement
+  // 1. Font replacement
   let fontReplacements = 0;
   const replaceFonts = (node: unknown): unknown => {
     if (typeof node === 'string') {
@@ -71,7 +56,7 @@ function patch(file: string): void {
   };
   style.layers = replaceFonts(style.layers);
 
-  // 4. Coalesce sizerank
+  // 2. Coalesce sizerank
   let sizerankBefore = 0;
   const countSizerank = (node: unknown): void => {
     if (Array.isArray(node)) {
@@ -87,7 +72,7 @@ function patch(file: string): void {
 
   writeFileSync(path, JSON.stringify(style, null, 2) + '\n');
   console.log(
-    `${file}: source=streets-v8, layers dropped=${dropped}, fonts replaced=${fontReplacements}, sizerank wrapped=${sizerankBefore}`
+    `${file}: fonts replaced=${fontReplacements}, sizerank wrapped=${sizerankBefore}`
   );
 }
 
