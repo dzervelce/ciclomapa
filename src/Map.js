@@ -88,7 +88,6 @@ const isE2E =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('e2e');
 
 const STREET_LAMP_SOURCE = 'street-lamps';
-const STREET_LAMP_LAYER_HEAT = 'street-lamp-heat';
 const STREET_LAMP_LAYER_BLOOM = 'street-lamp-bloom';
 const STREET_LAMP_LAYER_CORE = 'street-lamp-core';
 const STREET_LAMP_SPRITE_DARK = 'street-lamp-bloom-dark';
@@ -663,43 +662,6 @@ class Map extends Component {
     const dark = !!this.props.isDarkMode;
     const visible = this.props.showStreetLamps ? 'visible' : 'none';
 
-    // Heatmap shows illuminated areas at low/regional zoom, then fades out as
-    // the per-lamp bloom sprites take over.
-    if (this.map.getLayer(STREET_LAMP_LAYER_HEAT)) {
-      this.map.removeLayer(STREET_LAMP_LAYER_HEAT);
-    }
-    this.map.addLayer({
-      id: STREET_LAMP_LAYER_HEAT,
-      type: 'heatmap',
-      source: STREET_LAMP_SOURCE,
-      minzoom: 9,
-      maxzoom: 15,
-      layout: { visibility: visible },
-      paint: {
-        'heatmap-weight': dark ? 0.6 : 0.5,
-        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 9, 0.4, 11, 0.7, 13, 1.0, 15, 1.2],
-        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 9, 6, 11, 12, 13, 22, 14, 30, 15, 38],
-        'heatmap-color': dark
-          ? [
-              'interpolate', ['linear'], ['heatmap-density'],
-              0, 'rgba(0,0,0,0)',
-              0.18, 'rgba(255,210,122,0.10)',
-              0.45, 'rgba(255,224,130,0.24)',
-              0.75, 'rgba(255,243,196,0.40)',
-              1, 'rgba(255,248,216,0.55)',
-            ]
-          : [
-              'interpolate', ['linear'], ['heatmap-density'],
-              0, 'rgba(0,0,0,0)',
-              0.25, 'rgba(255,224,130,0.06)',
-              0.55, 'rgba(255,200,110,0.14)',
-              0.85, 'rgba(215,149,46,0.20)',
-              1, 'rgba(160,103,22,0.26)',
-            ],
-        'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0.55, 13, 0.7, 14, 0.5, 15, 0],
-      },
-    });
-
     if (this.map.getLayer(STREET_LAMP_LAYER_BLOOM)) {
       this.map.removeLayer(STREET_LAMP_LAYER_BLOOM);
     }
@@ -707,13 +669,13 @@ class Map extends Component {
       id: STREET_LAMP_LAYER_BLOOM,
       type: 'symbol',
       source: STREET_LAMP_SOURCE,
-      minzoom: 13,
+      minzoom: 11,
       layout: {
         visibility: visible,
         'icon-image': dark ? STREET_LAMP_SPRITE_DARK : STREET_LAMP_SPRITE_LIGHT,
         'icon-size': dark
-          ? ['interpolate', ['linear'], ['zoom'], 13, 0.06, 14, 0.09, 15, 0.14, 16, 0.22, 17, 0.34, 18, 0.50, 20, 0.85]
-          : ['interpolate', ['linear'], ['zoom'], 13, 0.04, 14, 0.06, 15, 0.10, 16, 0.14, 17, 0.20, 18, 0.30, 20, 0.50],
+          ? ['interpolate', ['linear'], ['zoom'], 11, 0.022, 12, 0.034, 13, 0.05, 14, 0.08, 15, 0.14, 16, 0.22, 17, 0.34, 18, 0.50, 20, 0.85]
+          : ['interpolate', ['linear'], ['zoom'], 11, 0.018, 12, 0.026, 13, 0.038, 14, 0.06, 15, 0.10, 16, 0.14, 17, 0.20, 18, 0.30, 20, 0.50],
         'icon-allow-overlap': true,
         'icon-ignore-placement': true,
         'icon-pitch-alignment': 'map',
@@ -721,8 +683,8 @@ class Map extends Component {
       },
       paint: {
         'icon-opacity': dark
-          ? ['interpolate', ['linear'], ['zoom'], 13, 0.0, 13.8, 0.35, 15, 0.75, 16, 0.88, 20, 0.95]
-          : ['interpolate', ['linear'], ['zoom'], 13, 0.0, 13.8, 0.20, 15, 0.50, 16, 0.65, 20, 0.75],
+          ? ['interpolate', ['linear'], ['zoom'], 11, 0.5, 13, 0.7, 15, 0.85, 16, 0.9, 20, 0.95]
+          : ['interpolate', ['linear'], ['zoom'], 11, 0.35, 13, 0.5, 15, 0.6, 16, 0.7, 20, 0.78],
       },
     });
 
@@ -750,30 +712,6 @@ class Map extends Component {
     if (!this.map) return;
     this.ensureStreetLampSprites();
     const dark = !!this.props.isDarkMode;
-    if (this.map.getLayer(STREET_LAMP_LAYER_HEAT)) {
-      this.map.setPaintProperty(STREET_LAMP_LAYER_HEAT, 'heatmap-weight', dark ? 0.6 : 0.5);
-      this.map.setPaintProperty(
-        STREET_LAMP_LAYER_HEAT,
-        'heatmap-color',
-        dark
-          ? [
-              'interpolate', ['linear'], ['heatmap-density'],
-              0, 'rgba(0,0,0,0)',
-              0.18, 'rgba(255,210,122,0.10)',
-              0.45, 'rgba(255,224,130,0.24)',
-              0.75, 'rgba(255,243,196,0.40)',
-              1, 'rgba(255,248,216,0.55)',
-            ]
-          : [
-              'interpolate', ['linear'], ['heatmap-density'],
-              0, 'rgba(0,0,0,0)',
-              0.25, 'rgba(255,224,130,0.06)',
-              0.55, 'rgba(255,200,110,0.14)',
-              0.85, 'rgba(215,149,46,0.20)',
-              1, 'rgba(160,103,22,0.26)',
-            ]
-      );
-    }
     if (this.map.getLayer(STREET_LAMP_LAYER_BLOOM)) {
       this.map.setLayoutProperty(
         STREET_LAMP_LAYER_BLOOM,
@@ -784,15 +722,15 @@ class Map extends Component {
         STREET_LAMP_LAYER_BLOOM,
         'icon-size',
         dark
-          ? ['interpolate', ['linear'], ['zoom'], 13, 0.06, 14, 0.09, 15, 0.14, 16, 0.22, 17, 0.34, 18, 0.50, 20, 0.85]
-          : ['interpolate', ['linear'], ['zoom'], 13, 0.04, 14, 0.06, 15, 0.10, 16, 0.14, 17, 0.20, 18, 0.30, 20, 0.50]
+          ? ['interpolate', ['linear'], ['zoom'], 11, 0.022, 12, 0.034, 13, 0.05, 14, 0.08, 15, 0.14, 16, 0.22, 17, 0.34, 18, 0.50, 20, 0.85]
+          : ['interpolate', ['linear'], ['zoom'], 11, 0.018, 12, 0.026, 13, 0.038, 14, 0.06, 15, 0.10, 16, 0.14, 17, 0.20, 18, 0.30, 20, 0.50]
       );
       this.map.setPaintProperty(
         STREET_LAMP_LAYER_BLOOM,
         'icon-opacity',
         dark
-          ? ['interpolate', ['linear'], ['zoom'], 13, 0.0, 13.8, 0.35, 15, 0.75, 16, 0.88, 20, 0.95]
-          : ['interpolate', ['linear'], ['zoom'], 13, 0.0, 13.8, 0.20, 15, 0.50, 16, 0.65, 20, 0.75]
+          ? ['interpolate', ['linear'], ['zoom'], 11, 0.5, 13, 0.7, 15, 0.85, 16, 0.9, 20, 0.95]
+          : ['interpolate', ['linear'], ['zoom'], 11, 0.35, 13, 0.5, 15, 0.6, 16, 0.7, 20, 0.78]
       );
     }
     if (this.map.getLayer(STREET_LAMP_LAYER_CORE)) {
@@ -808,7 +746,7 @@ class Map extends Component {
   setStreetLampVisibility(visible) {
     if (!this.map) return;
     const value = visible ? 'visible' : 'none';
-    [STREET_LAMP_LAYER_HEAT, STREET_LAMP_LAYER_BLOOM, STREET_LAMP_LAYER_CORE].forEach((id) => {
+    [STREET_LAMP_LAYER_BLOOM, STREET_LAMP_LAYER_CORE].forEach((id) => {
       if (this.map.getLayer(id)) {
         this.map.setLayoutProperty(id, 'visibility', value);
       }
