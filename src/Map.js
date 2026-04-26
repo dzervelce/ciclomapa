@@ -88,71 +88,45 @@ const isE2E =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('e2e');
 
 const STREET_LAMP_SOURCE = 'street-lamps';
-const STREET_LAMP_LAYER_GLOW = 'street-lamp-glow';
-const STREET_LAMP_LAYER_INNER = 'street-lamp-inner-glow';
+const STREET_LAMP_LAYER_BLOOM = 'street-lamp-bloom';
 const STREET_LAMP_LAYER_CORE = 'street-lamp-core';
-const STREET_LAMP_FETCH_MIN_ZOOM = 14;
+const STREET_LAMP_SPRITE_DARK = 'street-lamp-bloom-dark';
+const STREET_LAMP_SPRITE_LIGHT = 'street-lamp-bloom-light';
+const STREET_LAMP_FETCH_MIN_ZOOM = 13.5;
 
-function buildStreetLampLayers(isDarkMode) {
-  const dark = !!isDarkMode;
-  return [
-    {
-      id: STREET_LAMP_LAYER_GLOW,
-      type: 'circle',
-      source: STREET_LAMP_SOURCE,
-      minzoom: 14,
-      paint: {
-        'circle-color': dark ? '#FFD27A' : '#FFDFA0',
-        'circle-radius': dark
-          ? ['interpolate', ['linear'], ['zoom'], 14, 5, 15, 8, 16, 12, 17, 16, 18, 22, 20, 30]
-          : ['interpolate', ['linear'], ['zoom'], 14, 3.5, 15, 5, 16, 7, 17, 9, 18, 12, 20, 16],
-        'circle-blur': dark ? 0.82 : 0.75,
-        'circle-opacity': dark
-          ? ['interpolate', ['linear'], ['zoom'], 14, 0.18, 15, 0.28, 17, 0.34, 20, 0.38]
-          : ['interpolate', ['linear'], ['zoom'], 14, 0.1, 16, 0.16, 20, 0.2],
-        'circle-pitch-scale': 'map',
-      },
-    },
-    {
-      id: STREET_LAMP_LAYER_INNER,
-      type: 'circle',
-      source: STREET_LAMP_SOURCE,
-      minzoom: 14,
-      paint: {
-        'circle-color': dark ? '#FFE9A8' : '#FFE082',
-        'circle-radius': dark
-          ? ['interpolate', ['linear'], ['zoom'], 14, 2.4, 15, 3.6, 16, 5, 17, 6.6, 18, 8.5, 20, 11]
-          : ['interpolate', ['linear'], ['zoom'], 14, 1.8, 15, 2.5, 16, 3.4, 17, 4.4, 18, 5.5, 20, 7],
-        'circle-blur': dark ? 0.48 : 0.42,
-        'circle-opacity': dark
-          ? ['interpolate', ['linear'], ['zoom'], 14, 0.42, 16, 0.58, 20, 0.66]
-          : ['interpolate', ['linear'], ['zoom'], 14, 0.28, 16, 0.38, 20, 0.45],
-        'circle-pitch-scale': 'map',
-      },
-    },
-    {
-      id: STREET_LAMP_LAYER_CORE,
-      type: 'circle',
-      source: STREET_LAMP_SOURCE,
-      minzoom: 14.4,
-      paint: {
-        'circle-color': dark ? '#FFF8D8' : '#FFF3C4',
-        'circle-radius': dark
-          ? ['interpolate', ['linear'], ['zoom'], 14.4, 0.9, 16, 1.4, 18, 2, 20, 2.7]
-          : ['interpolate', ['linear'], ['zoom'], 14.4, 0.8, 16, 1.15, 18, 1.55, 20, 2],
-        'circle-blur': dark ? 0.08 : 0.05,
-        'circle-opacity': dark
-          ? ['interpolate', ['linear'], ['zoom'], 14.4, 0.72, 16, 0.9, 20, 0.95]
-          : ['interpolate', ['linear'], ['zoom'], 14.4, 0.75, 16, 0.86, 20, 0.9],
-        'circle-stroke-color': dark ? '#FFD27A' : '#D7952E',
-        'circle-stroke-width': dark
-          ? ['interpolate', ['linear'], ['zoom'], 14.4, 0, 17, 0.35, 20, 0.6]
-          : ['interpolate', ['linear'], ['zoom'], 14.4, 0, 17, 0.25, 20, 0.45],
-        'circle-stroke-opacity': dark ? 0.55 : 0.32,
-        'circle-pitch-scale': 'map',
-      },
-    },
-  ];
+// Bake a believable lamp into a radial-gradient sprite. A real multi-stop
+// alpha curve reads as light; circle-blur reads as a fuzzy disc.
+function generateLampSprite(theme) {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = size / 2;
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  if (theme === 'dark') {
+    grad.addColorStop(0.0, 'rgba(255, 252, 235, 1.00)');
+    grad.addColorStop(0.03, 'rgba(255, 245, 205, 0.98)');
+    grad.addColorStop(0.07, 'rgba(255, 228, 160, 0.78)');
+    grad.addColorStop(0.14, 'rgba(255, 210, 120, 0.46)');
+    grad.addColorStop(0.28, 'rgba(255, 190, 95, 0.22)');
+    grad.addColorStop(0.5, 'rgba(255, 175, 85, 0.08)');
+    grad.addColorStop(0.78, 'rgba(255, 165, 75, 0.02)');
+    grad.addColorStop(1.0, 'rgba(255, 165, 75, 0.0)');
+  } else {
+    grad.addColorStop(0.0, 'rgba(255, 248, 215, 1.00)');
+    grad.addColorStop(0.04, 'rgba(255, 235, 175, 0.92)');
+    grad.addColorStop(0.1, 'rgba(255, 215, 130, 0.58)');
+    grad.addColorStop(0.22, 'rgba(225, 165, 75, 0.30)');
+    grad.addColorStop(0.45, 'rgba(170, 115, 35, 0.10)');
+    grad.addColorStop(0.75, 'rgba(140, 90, 25, 0.03)');
+    grad.addColorStop(1.0, 'rgba(140, 90, 25, 0.0)');
+  }
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  return ctx.getImageData(0, 0, size, size);
 }
 
 class Map extends Component {
@@ -669,51 +643,119 @@ class Map extends Component {
     this.updateBoundaryMask();
   }
 
+  ensureStreetLampSprites() {
+    if (!this.map) return;
+    if (!this.map.hasImage(STREET_LAMP_SPRITE_DARK)) {
+      this.map.addImage(STREET_LAMP_SPRITE_DARK, generateLampSprite('dark'));
+    }
+    if (!this.map.hasImage(STREET_LAMP_SPRITE_LIGHT)) {
+      this.map.addImage(STREET_LAMP_SPRITE_LIGHT, generateLampSprite('light'));
+    }
+  }
+
   initStreetLampLayers() {
     if (!this.map) return;
+    this.ensureStreetLampSprites();
+
     if (!this.map.getSource(STREET_LAMP_SOURCE)) {
       this.map.addSource(STREET_LAMP_SOURCE, {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
     }
+
+    const dark = !!this.props.isDarkMode;
     const visible = this.props.showStreetLamps ? 'visible' : 'none';
-    buildStreetLampLayers(this.props.isDarkMode).forEach((layer) => {
-      if (this.map.getLayer(layer.id)) {
-        this.map.removeLayer(layer.id);
-      }
-      this.map.addLayer({ ...layer, layout: { visibility: visible } });
+
+    if (this.map.getLayer(STREET_LAMP_LAYER_BLOOM)) {
+      this.map.removeLayer(STREET_LAMP_LAYER_BLOOM);
+    }
+    this.map.addLayer({
+      id: STREET_LAMP_LAYER_BLOOM,
+      type: 'symbol',
+      source: STREET_LAMP_SOURCE,
+      minzoom: 13.5,
+      layout: {
+        visibility: visible,
+        'icon-image': dark ? STREET_LAMP_SPRITE_DARK : STREET_LAMP_SPRITE_LIGHT,
+        'icon-size': dark
+          ? ['interpolate', ['linear'], ['zoom'], 13.5, 0.10, 15, 0.18, 16, 0.28, 17, 0.40, 18, 0.55, 20, 0.85]
+          : ['interpolate', ['linear'], ['zoom'], 13.5, 0.07, 15, 0.12, 16, 0.18, 17, 0.25, 18, 0.34, 20, 0.50],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-pitch-alignment': 'map',
+        'icon-rotation-alignment': 'map',
+      },
+      paint: {
+        'icon-opacity': dark
+          ? ['interpolate', ['linear'], ['zoom'], 13.5, 0.65, 16, 0.88, 20, 0.95]
+          : ['interpolate', ['linear'], ['zoom'], 13.5, 0.45, 16, 0.65, 20, 0.75],
+      },
+    });
+
+    if (this.map.getLayer(STREET_LAMP_LAYER_CORE)) {
+      this.map.removeLayer(STREET_LAMP_LAYER_CORE);
+    }
+    // Tiny bright bulb on top of the bloom — gives the lamp a defined center
+    // at high zoom rather than a featureless soft blob.
+    this.map.addLayer({
+      id: STREET_LAMP_LAYER_CORE,
+      type: 'circle',
+      source: STREET_LAMP_SOURCE,
+      minzoom: 15.5,
+      layout: { visibility: visible },
+      paint: {
+        'circle-color': dark ? '#FFFBE8' : '#FFF3C4',
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 15.5, 0.7, 17, 1.1, 19, 1.6, 20, 2],
+        'circle-blur': 0.15,
+        'circle-opacity': dark ? 0.95 : 0.85,
+      },
     });
   }
 
   rebuildStreetLampLayerPaint() {
     if (!this.map) return;
-    const defs = buildStreetLampLayers(this.props.isDarkMode);
-    defs.forEach((layer) => {
-      if (!this.map.getLayer(layer.id)) return;
-      Object.entries(layer.paint).forEach(([prop, value]) => {
-        try {
-          this.map.setPaintProperty(layer.id, prop, value);
-        } catch (err) {
-          console.warn('[street-lamps] setPaintProperty failed', prop, err);
-        }
-      });
-    });
+    this.ensureStreetLampSprites();
+    const dark = !!this.props.isDarkMode;
+    if (this.map.getLayer(STREET_LAMP_LAYER_BLOOM)) {
+      this.map.setLayoutProperty(
+        STREET_LAMP_LAYER_BLOOM,
+        'icon-image',
+        dark ? STREET_LAMP_SPRITE_DARK : STREET_LAMP_SPRITE_LIGHT
+      );
+      this.map.setLayoutProperty(
+        STREET_LAMP_LAYER_BLOOM,
+        'icon-size',
+        dark
+          ? ['interpolate', ['linear'], ['zoom'], 13.5, 0.10, 15, 0.18, 16, 0.28, 17, 0.40, 18, 0.55, 20, 0.85]
+          : ['interpolate', ['linear'], ['zoom'], 13.5, 0.07, 15, 0.12, 16, 0.18, 17, 0.25, 18, 0.34, 20, 0.50]
+      );
+      this.map.setPaintProperty(
+        STREET_LAMP_LAYER_BLOOM,
+        'icon-opacity',
+        dark
+          ? ['interpolate', ['linear'], ['zoom'], 13.5, 0.65, 16, 0.88, 20, 0.95]
+          : ['interpolate', ['linear'], ['zoom'], 13.5, 0.45, 16, 0.65, 20, 0.75]
+      );
+    }
+    if (this.map.getLayer(STREET_LAMP_LAYER_CORE)) {
+      this.map.setPaintProperty(
+        STREET_LAMP_LAYER_CORE,
+        'circle-color',
+        dark ? '#FFFBE8' : '#FFF3C4'
+      );
+      this.map.setPaintProperty(STREET_LAMP_LAYER_CORE, 'circle-opacity', dark ? 0.95 : 0.85);
+    }
   }
 
   setStreetLampVisibility(visible) {
     if (!this.map) return;
     const value = visible ? 'visible' : 'none';
-    [STREET_LAMP_LAYER_GLOW, STREET_LAMP_LAYER_INNER, STREET_LAMP_LAYER_CORE].forEach((id) => {
+    [STREET_LAMP_LAYER_BLOOM, STREET_LAMP_LAYER_CORE].forEach((id) => {
       if (this.map.getLayer(id)) {
         this.map.setLayoutProperty(id, 'visibility', value);
       }
     });
-  }
-
-  clearStreetLampData() {
-    const src = this.map && this.map.getSource(STREET_LAMP_SOURCE);
-    if (src) src.setData({ type: 'FeatureCollection', features: [] });
   }
 
   fetchStreetLamps = async () => {
@@ -2021,9 +2063,8 @@ class Map extends Component {
       this.setStreetLampVisibility(this.props.showStreetLamps);
       if (this.props.showStreetLamps) {
         this.fetchStreetLamps();
-      } else {
-        if (this.streetLampAbort) this.streetLampAbort.abort();
-        this.clearStreetLampData();
+      } else if (this.streetLampAbort) {
+        this.streetLampAbort.abort();
       }
     }
 
