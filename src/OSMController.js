@@ -1,5 +1,6 @@
 /* eslint-disable no-loop-func */
 import osmtogeojson from 'osmtogeojson';
+import { augmentWithCyclepathConnectors } from './utils/cyclepathConnectors';
 
 import $ from 'jquery';
 
@@ -343,6 +344,10 @@ class OSMController {
 
                 // Convert all data to GeoJSON without filtering
                 geoJson = osmtogeojson({ elements: data.elements }, { flatProperties: true });
+
+                // Bridge the visual gap between separate cycleways (highway=cycleway)
+                // and connecting roads with sided cycleway tags. See utils/cyclepathConnectors.js.
+                geoJson = augmentWithCyclepathConnectors(geoJson, data.elements);
 
                 console.debug('converted to geoJSON: ', geoJson);
 
