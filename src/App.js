@@ -80,6 +80,7 @@ class App extends Component {
     this.onChangeStrategy = this.onChangeStrategy.bind(this);
     this.setMapRef = this.setMapRef.bind(this);
     this.toggleTheme = this.toggleTheme.bind(this);
+    this.toggleStreetLamps = this.toggleStreetLamps.bind(this);
     this.forceMapReinitialization = this.forceMapReinitialization.bind(this);
     this.setDirectionsPanelRef = this.setDirectionsPanelRef.bind(this);
     this.onDirectionsPanelToggle = this.onDirectionsPanelToggle.bind(this);
@@ -191,6 +192,7 @@ class App extends Component {
       lengthCalculationStrategy: DEFAULT_LENGTH_CALCULATE_STRATEGIES,
       map: null,
       isDarkMode: isDarkMode,
+      showStreetLamps: prev.showStreetLamps !== undefined ? prev.showStreetLamps : false,
       mapKey: 0,
       fromPoint: fromPoint,
       toPoint: toPoint,
@@ -265,6 +267,13 @@ class App extends Component {
     this.setState({ isSidebarOpen: state });
   }
 
+  toggleStreetLamps() {
+    this.setState(
+      (prev) => ({ showStreetLamps: !prev.showStreetLamps }),
+      () => this.saveStateToLocalStorage()
+    );
+  }
+
   openAboutModal() {
     this.setState({ aboutModal: true, hideUI: true });
   }
@@ -333,6 +342,7 @@ class App extends Component {
       isSidebarOpen: this.state.isSidebarOpen,
       layersStates: layersStates,
       isDarkMode: this.state.isDarkMode,
+      showStreetLamps: this.state.showStreetLamps,
       isTrackingUserLocation: this.state.isTrackingUserLocation,
     };
 
@@ -1417,6 +1427,7 @@ class App extends Component {
       toggleSidebar: this.toggleSidebar,
       openAboutModal: this.openAboutModal,
       toggleTheme: this.toggleTheme,
+      toggleStreetLamps: this.toggleStreetLamps,
       updateLengths: this.updateLengths,
       setMapRef: this.setMapRef,
       onTrackingUserLocationChange: (isTracking) => {

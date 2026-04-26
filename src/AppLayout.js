@@ -54,6 +54,8 @@ export default function AppLayout({
                 openAboutModal={handlers.openAboutModal}
                 isDarkMode={state.isDarkMode}
                 toggleTheme={handlers.toggleTheme}
+                showStreetLamps={state.showStreetLamps}
+                toggleStreetLamps={handlers.toggleStreetLamps}
                 loading={state.loading}
               />
             </header>
@@ -78,6 +80,7 @@ export default function AppLayout({
             embedMode={state.embedMode}
             debugMode={state.debugMode}
             isDarkMode={state.isDarkMode}
+            showStreetLamps={state.showStreetLamps}
             setMapRef={handlers.setMapRef}
             directionsPanelRef={directionsPanelRef}
             toPoint={state.toPoint}

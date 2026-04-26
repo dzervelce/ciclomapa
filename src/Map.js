@@ -87,6 +87,74 @@ export function flyMapToCityFocus(map, centerLngLat, placeName) {
 const isE2E =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('e2e');
 
+const STREET_LAMP_SOURCE = 'street-lamps';
+const STREET_LAMP_LAYER_GLOW = 'street-lamp-glow';
+const STREET_LAMP_LAYER_INNER = 'street-lamp-inner-glow';
+const STREET_LAMP_LAYER_CORE = 'street-lamp-core';
+const STREET_LAMP_FETCH_MIN_ZOOM = 14;
+
+function buildStreetLampLayers(isDarkMode) {
+  const dark = !!isDarkMode;
+  return [
+    {
+      id: STREET_LAMP_LAYER_GLOW,
+      type: 'circle',
+      source: STREET_LAMP_SOURCE,
+      minzoom: 14,
+      paint: {
+        'circle-color': dark ? '#FFD27A' : '#FFDFA0',
+        'circle-radius': dark
+          ? ['interpolate', ['linear'], ['zoom'], 14, 5, 15, 8, 16, 12, 17, 16, 18, 22, 20, 30]
+          : ['interpolate', ['linear'], ['zoom'], 14, 3.5, 15, 5, 16, 7, 17, 9, 18, 12, 20, 16],
+        'circle-blur': dark ? 0.82 : 0.75,
+        'circle-opacity': dark
+          ? ['interpolate', ['linear'], ['zoom'], 14, 0.18, 15, 0.28, 17, 0.34, 20, 0.38]
+          : ['interpolate', ['linear'], ['zoom'], 14, 0.1, 16, 0.16, 20, 0.2],
+        'circle-pitch-scale': 'map',
+      },
+    },
+    {
+      id: STREET_LAMP_LAYER_INNER,
+      type: 'circle',
+      source: STREET_LAMP_SOURCE,
+      minzoom: 14,
+      paint: {
+        'circle-color': dark ? '#FFE9A8' : '#FFE082',
+        'circle-radius': dark
+          ? ['interpolate', ['linear'], ['zoom'], 14, 2.4, 15, 3.6, 16, 5, 17, 6.6, 18, 8.5, 20, 11]
+          : ['interpolate', ['linear'], ['zoom'], 14, 1.8, 15, 2.5, 16, 3.4, 17, 4.4, 18, 5.5, 20, 7],
+        'circle-blur': dark ? 0.48 : 0.42,
+        'circle-opacity': dark
+          ? ['interpolate', ['linear'], ['zoom'], 14, 0.42, 16, 0.58, 20, 0.66]
+          : ['interpolate', ['linear'], ['zoom'], 14, 0.28, 16, 0.38, 20, 0.45],
+        'circle-pitch-scale': 'map',
+      },
+    },
+    {
+      id: STREET_LAMP_LAYER_CORE,
+      type: 'circle',
+      source: STREET_LAMP_SOURCE,
+      minzoom: 14.4,
+      paint: {
+        'circle-color': dark ? '#FFF8D8' : '#FFF3C4',
+        'circle-radius': dark
+          ? ['interpolate', ['linear'], ['zoom'], 14.4, 0.9, 16, 1.4, 18, 2, 20, 2.7]
+          : ['interpolate', ['linear'], ['zoom'], 14.4, 0.8, 16, 1.15, 18, 1.55, 20, 2],
+        'circle-blur': dark ? 0.08 : 0.05,
+        'circle-opacity': dark
+          ? ['interpolate', ['linear'], ['zoom'], 14.4, 0.72, 16, 0.9, 20, 0.95]
+          : ['interpolate', ['linear'], ['zoom'], 14.4, 0.75, 16, 0.86, 20, 0.9],
+        'circle-stroke-color': dark ? '#FFD27A' : '#D7952E',
+        'circle-stroke-width': dark
+          ? ['interpolate', ['linear'], ['zoom'], 14.4, 0, 17, 0.35, 20, 0.6]
+          : ['interpolate', ['linear'], ['zoom'], 14.4, 0, 17, 0.25, 20, 0.45],
+        'circle-stroke-opacity': dark ? 0.55 : 0.32,
+        'circle-pitch-scale': 'map',
+      },
+    },
+  ];
+}
+
 class Map extends Component {
   map;
   searchBar;
@@ -176,6 +244,10 @@ class Map extends Component {
 
   onMapMoveEnded() {
     this.syncMapState();
+
+    if (this.props.showStreetLamps) {
+      this.fetchStreetLamps();
+    }
 
     if (this.map.getZoom() > MAP_AUTOCHANGE_AREA_ZOOM_THRESHOLD) {
       const center = this.map.getCenter();
@@ -596,6 +668,94 @@ class Map extends Component {
   initBoundaryLayer() {
     this.updateBoundaryMask();
   }
+
+  initStreetLampLayers() {
+    if (!this.map) return;
+    if (!this.map.getSource(STREET_LAMP_SOURCE)) {
+      this.map.addSource(STREET_LAMP_SOURCE, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+    }
+    const visible = this.props.showStreetLamps ? 'visible' : 'none';
+    buildStreetLampLayers(this.props.isDarkMode).forEach((layer) => {
+      if (this.map.getLayer(layer.id)) {
+        this.map.removeLayer(layer.id);
+      }
+      this.map.addLayer({ ...layer, layout: { visibility: visible } });
+    });
+  }
+
+  rebuildStreetLampLayerPaint() {
+    if (!this.map) return;
+    const defs = buildStreetLampLayers(this.props.isDarkMode);
+    defs.forEach((layer) => {
+      if (!this.map.getLayer(layer.id)) return;
+      Object.entries(layer.paint).forEach(([prop, value]) => {
+        try {
+          this.map.setPaintProperty(layer.id, prop, value);
+        } catch (err) {
+          console.warn('[street-lamps] setPaintProperty failed', prop, err);
+        }
+      });
+    });
+  }
+
+  setStreetLampVisibility(visible) {
+    if (!this.map) return;
+    const value = visible ? 'visible' : 'none';
+    [STREET_LAMP_LAYER_GLOW, STREET_LAMP_LAYER_INNER, STREET_LAMP_LAYER_CORE].forEach((id) => {
+      if (this.map.getLayer(id)) {
+        this.map.setLayoutProperty(id, 'visibility', value);
+      }
+    });
+  }
+
+  clearStreetLampData() {
+    const src = this.map && this.map.getSource(STREET_LAMP_SOURCE);
+    if (src) src.setData({ type: 'FeatureCollection', features: [] });
+  }
+
+  fetchStreetLamps = async () => {
+    if (!this.map || !this.props.showStreetLamps) return;
+    if (this.map.getZoom() < STREET_LAMP_FETCH_MIN_ZOOM) return;
+
+    const bounds = this.map.getBounds();
+    const south = bounds.getSouth().toFixed(5);
+    const west = bounds.getWest().toFixed(5);
+    const north = bounds.getNorth().toFixed(5);
+    const east = bounds.getEast().toFixed(5);
+
+    if (this.streetLampAbort) this.streetLampAbort.abort();
+    const ac = new AbortController();
+    this.streetLampAbort = ac;
+
+    const query = `[out:json][timeout:60];node["highway"="street_lamp"](${south},${west},${north},${east});out skel;`;
+
+    try {
+      const res = await fetch('/api/overpass?data=' + encodeURIComponent(query), {
+        signal: ac.signal,
+      });
+      if (!res.ok) {
+        console.warn('[street-lamps] overpass returned', res.status);
+        return;
+      }
+      const data = await res.json();
+      const features = (data.elements || [])
+        .filter((el) => el.type === 'node' && Number.isFinite(el.lon) && Number.isFinite(el.lat))
+        .map((el) => ({
+          type: 'Feature',
+          id: el.id,
+          geometry: { type: 'Point', coordinates: [el.lon, el.lat] },
+          properties: {},
+        }));
+      const src = this.map && this.map.getSource(STREET_LAMP_SOURCE);
+      if (src) src.setData({ type: 'FeatureCollection', features });
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      console.warn('[street-lamps] fetch failed', err);
+    }
+  };
 
   focusFeatureOnMobile(feature) {
     if (!IS_MOBILE || !this.map) {
@@ -1854,6 +2014,17 @@ class Map extends Component {
       } catch (err) {
         console.warn('[Velokarte] setConfigProperty failed:', err);
       }
+      this.rebuildStreetLampLayerPaint();
+    }
+
+    if (this.props.showStreetLamps !== prevProps.showStreetLamps) {
+      this.setStreetLampVisibility(this.props.showStreetLamps);
+      if (this.props.showStreetLamps) {
+        this.fetchStreetLamps();
+      } else {
+        if (this.streetLampAbort) this.streetLampAbort.abort();
+        this.clearStreetLampData();
+      }
     }
 
     if (this.props.showSatellite !== prevProps.showSatellite) {
@@ -2964,6 +3135,11 @@ class Map extends Component {
 
     this.initRoutesLayers();
 
+    this.initStreetLampLayers();
+    if (this.props.showStreetLamps) {
+      this.fetchStreetLamps();
+    }
+
     if (ENABLE_COMMENTS) {
       this.initCommentsLayer();
     }
@@ -3005,6 +3181,10 @@ class Map extends Component {
     }
     if (this.debouncedMapStateSync) {
       this.debouncedMapStateSync.cancel();
+    }
+    if (this.streetLampAbort) {
+      this.streetLampAbort.abort();
+      this.streetLampAbort = null;
     }
 
     if (this.map) {
