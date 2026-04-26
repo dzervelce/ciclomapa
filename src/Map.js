@@ -2267,17 +2267,22 @@ class Map extends Component {
     const sunPosition = getCurrentSunPosition(this.props.lat, this.props.lng);
 
     if (sunPosition.isDaytime) {
-      this.map.setLights([
-        {
-          id: 'directional',
-          type: 'directional',
-          properties: {
-            color: MAP_COLORS.LIGHT_COLOR,
-            intensity: 1,
-            direction: [sunPosition.azimuthal, sunPosition.polar],
-          },
-        },
-      ]);
+      // Convert spherical coordinates to Cartesian coordinates
+      // azimuthal: horizontal angle (0-360 degrees)
+      // polar: vertical angle (0-90 degrees)
+      const azimuthRad = (sunPosition.azimuthal * Math.PI) / 180;
+      const polarRad = (sunPosition.polar * Math.PI) / 180;
+
+      const x = Math.sin(polarRad) * Math.cos(azimuthRad);
+      const y = Math.sin(polarRad) * Math.sin(azimuthRad);
+      const z = Math.cos(polarRad);
+
+      this.map.setLight({
+        anchor: 'viewport',
+        color: MAP_COLORS.LIGHT_COLOR,
+        intensity: 1,
+        position: [x, y, z],
+      });
       console.debug(
         `Set realistic lighting: azimuthal=${sunPosition.azimuthal.toFixed(1)}°, polar=${sunPosition.polar.toFixed(1)}°`
       );
@@ -2676,17 +2681,6 @@ class Map extends Component {
   }
 
   loadImages() {
-    // Mapbox Studio styles can reference parametric images (e.g. "arrow") that
-    // aren't in our sprite. Register a 1x1 transparent fallback so the warning
-    // and the styleimagemissing event don't fire repeatedly.
-    if (!this.map.__missingImageHandlerInstalled) {
-      this.map.__missingImageHandlerInstalled = true;
-      this.map.on('styleimagemissing', (e) => {
-        if (this.map.hasImage(e.id)) return;
-        this.map.addImage(e.id, { width: 1, height: 1, data: new Uint8Array(4) });
-      });
-    }
-
     // Load comment icons if not already loaded
     if (!this.map.hasImage('commentIcon')) {
       this.map.loadImage(iconsMap['poi-comment'], (error, image) => {

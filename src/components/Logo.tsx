@@ -7,10 +7,11 @@ export interface LogoProps {
 const Logo: React.FC<LogoProps> = ({ className = '' }) => {
   return (
     <svg
+      width="auto"
+      height="1em"
       viewBox="0 0 1197 217"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ height: '1em', width: 'auto' }}
       className={`logo-svg ${className}`}
     >
       <path
