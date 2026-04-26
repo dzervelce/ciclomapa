@@ -289,8 +289,10 @@ class Map extends Component {
 
   // Filter that matches features needing render on one side. Includes both
   // direct sided values and `cycleway:both` values so symmetric infra lights
-  // up both sides naturally.
-  buildSideMatchFilter(sideKey, sideValues, bothValues, sourceId) {
+  // up both sides naturally. Returns null when nothing would match — the
+  // caller should skip adding the side layer (Mapbox rejects the legacy
+  // `['==', <number>, <number>]` placeholder form at filter position 0).
+  buildSideMatchFilter(sideKey, sideValues, bothValues) {
     const tests = [];
     if (sideValues.length > 0) {
       tests.push(['in', ['get', sideKey], ['literal', [...new Set(sideValues)]]]);
@@ -298,8 +300,8 @@ class Map extends Component {
     if (bothValues.length > 0) {
       tests.push(['in', ['get', 'cycleway:both'], ['literal', [...new Set(bothValues)]]]);
     }
-    if (tests.length === 0) return ['==', 1, 0];
-    return this.withGeoJsonHide(tests.length === 1 ? tests[0] : ['any', ...tests], sourceId);
+    if (tests.length === 0) return null;
+    return tests.length === 1 ? tests[0] : ['any', ...tests];
   }
 
   // Per-layer filter set used by both the initial layer creation and the
@@ -307,7 +309,9 @@ class Map extends Component {
   // listed in `l.filters` (used for hover/click hit-testing and the muted
   // routes-active backdrop). `center` excludes sided cycleway tags so those
   // features render only via the offset side layers. Flat `cycleway=shared_lane`
-  // is also routed to both sides — see partitionCyclepathFilters.
+  // is also routed to both sides — see partitionCyclepathFilters. `left` /
+  // `right` are null when the layer has no sided values and no flat shared_lane;
+  // callers must skip layer creation for null sides.
   computeCyclepathFilters(l, sourceId) {
     const partition = this.partitionCyclepathFilters(l.filters);
     const sharedLaneFilter = partition.hasFlatSharedLane
@@ -321,33 +325,24 @@ class Map extends Component {
 
     const augmentSide = (sideFilter) => {
       if (!sharedLaneFilter) return sideFilter;
+      if (!sideFilter) return sharedLaneFilter;
       return ['any', sideFilter, sharedLaneFilter];
     };
+
+    const wrapSide = (raw) => (raw == null ? null : this.withGeoJsonHide(raw, sourceId));
 
     return {
       full: this.withGeoJsonHide(this.entriesToMapboxAny(l.filters), sourceId),
       center: this.withGeoJsonHide(center, sourceId),
-      left: this.withGeoJsonHide(
+      left: wrapSide(
         augmentSide(
-          this.buildSideMatchFilter(
-            'cycleway:left',
-            partition.leftValues,
-            partition.bothValues,
-            null
-          )
-        ),
-        sourceId
+          this.buildSideMatchFilter('cycleway:left', partition.leftValues, partition.bothValues)
+        )
       ),
-      right: this.withGeoJsonHide(
+      right: wrapSide(
         augmentSide(
-          this.buildSideMatchFilter(
-            'cycleway:right',
-            partition.rightValues,
-            partition.bothValues,
-            null
-          )
-        ),
-        sourceId
+          this.buildSideMatchFilter('cycleway:right', partition.rightValues, partition.bothValues)
+        )
       ),
     };
   }
@@ -898,11 +893,13 @@ class Map extends Component {
     // Side-offset lines for cycleway:left / cycleway:right / cycleway:both.
     // Each renders the same color/width/dash as the centered layer, but offset
     // perpendicular to the way so left-right asymmetry (e.g. shared lane only
-    // on the right) is visible.
+    // on the right) is visible. Skipped when the layer has no sided values to
+    // match — Mapbox rejects placeholder never-match filters at top level.
     [
       { id: leftLayerId, filter: leftFilter, sign: -1 },
       { id: rightLayerId, filter: rightFilter, sign: 1 },
     ].forEach(({ id, filter, sign }) => {
+      if (!filter) return;
       this.map.addLayer(
         {
           id,
@@ -980,7 +977,8 @@ class Map extends Component {
       };
 
       // Centered arrows for non-sided matches; --left / --right arrow layers
-      // shadow the offset side lines.
+      // shadow the offset side lines. Side variants skipped when there's
+      // nothing to match (filter == null).
       // Velokarte: MapLibre rejects raw arrays inside expressions; arrays must
       // be wrapped in `['literal', ...]`. Mapbox tolerated both forms.
       [
@@ -988,6 +986,7 @@ class Map extends Component {
         { id: arrowLayerId + '--left', filter: leftFilter, iconOffset: ['literal', [0, -44]] },
         { id: arrowLayerId + '--right', filter: rightFilter, iconOffset: ['literal', [0, 44]] },
       ].forEach(({ id, filter, iconOffset }) => {
+        if (!filter) return;
         this.map.addLayer(
           {
             id,
