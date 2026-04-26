@@ -224,30 +224,100 @@ class Map extends Component {
   }
 
   convertFilterToMapboxFilter(l, sourceId = null) {
-    const baseFilter = [
+    return this.withGeoJsonHide(this.entriesToMapboxAny(l.filters), sourceId);
+  }
+
+  // Build an `any`-matcher from a list of filter entries (flat pair or AND-group).
+  entriesToMapboxAny(entries) {
+    if (!entries || entries.length === 0) return ['==', 1, 0];
+    return [
       'any',
-      ...l.filters.map((f) =>
+      ...entries.map((f) =>
         typeof f[0] === 'string'
           ? ['==', ['get', f[0]], f[1]]
           : ['all', ...f.map((f2) => ['==', ['get', f2[0]], f2[1]])]
       ),
     ];
+  }
 
-    // For pmtiles layers, combine with geojson feature ID hiding filter
-    if (sourceId === 'pmtiles-source' && this.geojsonFeatureIds.size > 0) {
-      const idsToHide = Array.from(this.geojsonFeatureIds);
-      const hideFilter = [
+  // Wrap a base filter with the geojson-hide guard used for pmtiles layers.
+  withGeoJsonHide(baseFilter, sourceId) {
+    if (sourceId !== 'pmtiles-source' || this.geojsonFeatureIds.size === 0) return baseFilter;
+    const idsToHide = Array.from(this.geojsonFeatureIds);
+    return [
+      'all',
+      baseFilter,
+      [
         '!',
         [
           'any',
           ['in', ['get', '@id'], ['literal', idsToHide]],
           ['in', ['get', 'id'], ['literal', idsToHide]],
         ],
-      ];
-      return ['all', baseFilter, hideFilter];
-    }
+      ],
+    ];
+  }
 
-    return baseFilter;
+  // Split a layer's `filters` into entries used for the centered render vs. values
+  // pulled out for per-side rendering. AND-grouped entries always stay centered
+  // (none of our AND groups currently use sided cycleway keys).
+  partitionCyclepathFilters(rawFilters) {
+    const center = [];
+    const leftValues = [];
+    const rightValues = [];
+    const bothValues = [];
+    for (const f of rawFilters) {
+      if (typeof f[0] === 'string') {
+        const [k, v] = f;
+        if (k === 'cycleway:left') leftValues.push(v);
+        else if (k === 'cycleway:right') rightValues.push(v);
+        else if (k === 'cycleway:both') bothValues.push(v);
+        else center.push(f);
+      } else {
+        center.push(f);
+      }
+    }
+    return { center, leftValues, rightValues, bothValues };
+  }
+
+  // Filter that matches features needing render on one side. Includes both
+  // direct sided values and `cycleway:both` values so symmetric infra lights
+  // up both sides naturally.
+  buildSideMatchFilter(sideKey, sideValues, bothValues, sourceId) {
+    const tests = [];
+    if (sideValues.length > 0) {
+      tests.push(['in', ['get', sideKey], ['literal', [...new Set(sideValues)]]]);
+    }
+    if (bothValues.length > 0) {
+      tests.push(['in', ['get', 'cycleway:both'], ['literal', [...new Set(bothValues)]]]);
+    }
+    if (tests.length === 0) return ['==', 1, 0];
+    return this.withGeoJsonHide(tests.length === 1 ? tests[0] : ['any', ...tests], sourceId);
+  }
+
+  // Per-layer filter set used by both the initial layer creation and the
+  // dynamic refresh in hideGeoJsonFromPmtiles. `full` matches every feature
+  // listed in `l.filters` (used for hover/click hit-testing and the muted
+  // routes-active backdrop). `center` excludes sided cycleway tags so those
+  // features render only via the offset side layers.
+  computeCyclepathFilters(l, sourceId) {
+    const partition = this.partitionCyclepathFilters(l.filters);
+    return {
+      full: this.withGeoJsonHide(this.entriesToMapboxAny(l.filters), sourceId),
+      center: this.withGeoJsonHide(this.entriesToMapboxAny(partition.center), sourceId),
+      left: this.buildSideMatchFilter(
+        'cycleway:left',
+        partition.leftValues,
+        partition.bothValues,
+        sourceId
+      ),
+      right: this.buildSideMatchFilter(
+        'cycleway:right',
+        partition.rightValues,
+        partition.bothValues,
+        sourceId
+      ),
+    };
   }
 
   hideGeoJsonFromPmtiles(geoJsonData) {
@@ -271,16 +341,14 @@ class Map extends Component {
 
     this.props.layers.forEach((layer) => {
       if (!layer.type || layer.type === 'way') {
-        const layerId = layer.id + '--pmtiles';
-        if (this.map.getLayer(layerId)) {
-          const newFilter = this.convertFilterToMapboxFilter(layer, 'pmtiles-source');
-          this.map.setFilter(layerId, newFilter);
-        }
-        const routesActiveLayerId = layer.id + '--routes-active--pmtiles';
-        if (this.map.getLayer(routesActiveLayerId)) {
-          const newFilter = this.convertFilterToMapboxFilter(layer, 'pmtiles-source');
-          this.map.setFilter(routesActiveLayerId, newFilter);
-        }
+        const f = this.computeCyclepathFilters(layer, 'pmtiles-source');
+        const refresh = (id, expr) => {
+          if (this.map.getLayer(id)) this.map.setFilter(id, expr);
+        };
+        refresh(layer.id + '--pmtiles', f.center);
+        refresh(layer.id + '--left--pmtiles', f.left);
+        refresh(layer.id + '--right--pmtiles', f.right);
+        refresh(layer.id + '--routes-active--pmtiles', f.full);
       } else if (layer.type === 'poi' && layer.filters) {
         const layerId = layer.id + '--pmtiles';
         const circlesLayerId = layerId + 'circles';
@@ -667,7 +735,11 @@ class Map extends Component {
   }
 
   initCyclepathLayerForSource(l, sourceId) {
-    const filters = this.convertFilterToMapboxFilter(l, sourceId);
+    const cycFilters = this.computeCyclepathFilters(l, sourceId);
+    const filters = cycFilters.full;
+    const centerFilter = cycFilters.center;
+    const leftFilter = cycFilters.left;
+    const rightFilter = cycFilters.right;
 
     const layerUnderneathName = this.getLayerUnderneathName(this.map);
     const self = this;
@@ -677,7 +749,23 @@ class Map extends Component {
     const sourceSuffix = sourceId === 'osmdata' ? '' : '--pmtiles';
     const interactiveLayerId = l.id + '--interactive' + sourceSuffix;
     const normalLayerId = l.id + sourceSuffix;
+    const leftLayerId = l.id + '--left' + sourceSuffix;
+    const rightLayerId = l.id + '--right' + sourceSuffix;
     const routesActiveLayerId = l.id + '--routes-active' + sourceSuffix;
+
+    // Per-side line offsets (px) at z10 / z18. Sign is conventional Mapbox:
+    // positive = right of the way's drawn direction.
+    const sideOffsetLowZoom = Math.max(1, l.style.lineWidth / 4);
+    const sideOffsetHighZoom = l.style.lineWidth * DEFAULT_LINE_WIDTH_MULTIPLIER;
+    const sideOffsetExpr = (sign) => [
+      'interpolate',
+      ['exponential', 1.5],
+      ['zoom'],
+      10,
+      sign * sideOffsetLowZoom,
+      18,
+      sign * sideOffsetHighZoom,
+    ];
 
     const dashedLineStyle = { 'line-dasharray': [1, 1] };
     // const dashedLineStyle = {
@@ -694,8 +782,10 @@ class Map extends Component {
     //     ]
     // };
 
-    // Interactive layer is wider than the actual layer to improve usability
+    // Interactive layer is wider than the actual layer to improve usability.
+    // Hit area is centered and widened so it covers offset side renders too.
     if (sourceId === 'osmdata') {
+      const interactiveWidth = Math.max(20, sideOffsetHighZoom * 3);
       this.map.addLayer(
         {
           id: interactiveLayerId,
@@ -710,34 +800,11 @@ class Map extends Component {
               1, // Selected
               0,
             ],
-            'line-offset': [
-              'interpolate',
-              ['exponential', 1.5],
-              ['zoom'],
-              10,
-              [
-                'case',
-                ['==', ['get', 'cycleway:right'], 'lane'],
-                Math.max(1, l.style.lineWidth / 4),
-                ['==', ['get', 'cycleway:left'], 'lane'],
-                Math.min(-1, -l.style.lineWidth / 4),
-                0,
-              ],
-              18,
-              [
-                'case',
-                ['==', ['get', 'cycleway:right'], 'lane'],
-                l.style.lineWidth * DEFAULT_LINE_WIDTH_MULTIPLIER,
-                ['==', ['get', 'cycleway:left'], 'lane'],
-                -l.style.lineWidth * DEFAULT_LINE_WIDTH_MULTIPLIER,
-                0,
-              ],
-            ],
             'line-color': adjustColorBrightness(
               l.style.lineColor,
               this.props.isDarkMode ? -0.7 : 0.7
             ),
-            'line-width': 20,
+            'line-width': interactiveWidth,
           },
           layout: {
           },
@@ -745,6 +812,34 @@ class Map extends Component {
         layerUnderneathName
       );
     }
+
+    // Centered line: matches features tagged with non-sided cycleway values
+    // (e.g. `highway=cycleway`, `cycleway=lane`). Sided variants render via
+    // the --left / --right layers below.
+    const cyclepathLineColor = [
+      'case',
+      ['boolean', ['feature-state', 'selected'], false],
+      adjustColorBrightness(l.style.lineColor, this.props.isDarkMode ? 0.1 : -0.1, 'hsl'),
+      [
+        'case',
+        ['boolean', ['feature-state', 'hover'], false],
+        adjustColorBrightness(l.style.lineColor, this.props.isDarkMode ? -0.3 : 0.3),
+        adjustColorBrightness(l.style.lineColor, this.props.isDarkMode ? 0.0 : -0.1, 'hsl'),
+      ],
+    ];
+    const cyclepathLineWidth = [
+      'interpolate',
+      ['exponential', 1.5],
+      ['zoom'],
+      10,
+      Math.max(1, l.style.lineWidth / LOW_ZOOM_WIDTH_DIVISOR),
+      18,
+      l.style.lineWidth * DEFAULT_LINE_WIDTH_MULTIPLIER,
+    ];
+    const cyclepathLineLayout = {
+      ...(l.style.lineStyle === 'dashed' ? {} : { 'line-join': 'round', 'line-cap': 'round' }),
+    };
+    const cyclepathLineDash = l.style.lineStyle === 'dashed' ? dashedLineStyle : {};
 
     this.map.addLayer(
       {
@@ -754,59 +849,45 @@ class Map extends Component {
         'source-layer': sourceLayer,
         name: l.name,
         description: l.description,
-        filter: filters,
+        filter: centerFilter,
         paint: {
-          'line-color': [
-            'case',
-            ['boolean', ['feature-state', 'selected'], false],
-            adjustColorBrightness(l.style.lineColor, this.props.isDarkMode ? 0.1 : -0.1, 'hsl'), // Selected
-            [
-              'case',
-              ['boolean', ['feature-state', 'hover'], false],
-              adjustColorBrightness(l.style.lineColor, this.props.isDarkMode ? -0.3 : 0.3), // Hover
-              adjustColorBrightness(l.style.lineColor, this.props.isDarkMode ? 0.0 : -0.1, 'hsl'), // Default
-            ],
-          ],
-          'line-offset': [
-            'interpolate',
-            ['exponential', 1.5],
-            ['zoom'],
-            10,
-            [
-              'case',
-              ['==', ['get', 'cycleway:right'], 'lane'],
-              Math.max(1, l.style.lineWidth / 4),
-              ['==', ['get', 'cycleway:left'], 'lane'],
-              Math.min(-1, -l.style.lineWidth / 4),
-              0,
-            ],
-            18,
-            [
-              'case',
-              ['==', ['get', 'cycleway:right'], 'lane'],
-              l.style.lineWidth * DEFAULT_LINE_WIDTH_MULTIPLIER,
-              ['==', ['get', 'cycleway:left'], 'lane'],
-              -l.style.lineWidth * DEFAULT_LINE_WIDTH_MULTIPLIER,
-              0,
-            ],
-          ],
-          'line-width': [
-            'interpolate',
-            ['exponential', 1.5],
-            ['zoom'],
-            10,
-            Math.max(1, l.style.lineWidth / LOW_ZOOM_WIDTH_DIVISOR),
-            18,
-            l.style.lineWidth * DEFAULT_LINE_WIDTH_MULTIPLIER,
-          ],
-          ...(l.style.lineStyle === 'dashed' && dashedLineStyle),
+          'line-color': cyclepathLineColor,
+          'line-width': cyclepathLineWidth,
+          ...cyclepathLineDash,
         },
-        layout: {
-          ...(l.style.lineStyle === 'dashed' ? {} : { 'line-join': 'round', 'line-cap': 'round' }),
-        },
+        layout: cyclepathLineLayout,
       },
       layerUnderneathName
     );
+
+    // Side-offset lines for cycleway:left / cycleway:right / cycleway:both.
+    // Each renders the same color/width/dash as the centered layer, but offset
+    // perpendicular to the way so left-right asymmetry (e.g. shared lane only
+    // on the right) is visible.
+    [
+      { id: leftLayerId, filter: leftFilter, sign: -1 },
+      { id: rightLayerId, filter: rightFilter, sign: 1 },
+    ].forEach(({ id, filter, sign }) => {
+      this.map.addLayer(
+        {
+          id,
+          type: 'line',
+          source: sourceId,
+          'source-layer': sourceLayer,
+          name: l.name,
+          description: l.description,
+          filter,
+          paint: {
+            'line-color': cyclepathLineColor,
+            'line-width': cyclepathLineWidth,
+            'line-offset': sideOffsetExpr(sign),
+            ...cyclepathLineDash,
+          },
+          layout: cyclepathLineLayout,
+        },
+        layerUnderneathName
+      );
+    });
 
     if (sourceId === 'osmdata') {
       const arrowLayerId = normalLayerId + '--arrows';
@@ -818,71 +899,74 @@ class Map extends Component {
           ? arrowBase
           : `${arrowBase}--light`;
 
-      this.map.addLayer(
-        {
-          id: arrowLayerId,
-          type: 'symbol',
-          source: sourceId,
-          'source-layer': sourceLayer,
-          filter: filters,
-          minzoom: 12,
-          layout: {
-            'symbol-placement': 'line',
-            'symbol-spacing': ['interpolate', ['exponential', 1.5], ['zoom'], 12, 20, 16, 80],
-            'icon-image': arrowIconName,
-            'icon-size': [
-              'interpolate',
-              ['exponential', 1.5],
-              ['zoom'],
-              10,
-              (Math.max(1, l.style.lineWidth / LOW_ZOOM_WIDTH_DIVISOR) / 32) * (useSdf ? 1 : 0.5),
-              18,
-              ((l.style.lineWidth * DEFAULT_LINE_WIDTH_MULTIPLIER) / 24) * (useSdf ? 1 : 0.5),
-            ],
-            'icon-rotation-alignment': 'map',
-            'icon-allow-overlap': true,
-            'icon-ignore-placement': true,
-            'icon-padding': 4,
-            // Velokarte: MapLibre rejects raw arrays inside expressions; must be
-            // wrapped in `['literal', ...]`. Mapbox tolerated both forms.
-            'icon-offset': [
-              'case',
-              ['==', ['get', 'cycleway:right'], 'lane'],
-              ['literal', [0, 44]],
-              ['==', ['get', 'cycleway:left'], 'lane'],
-              ['literal', [0, -44]],
-              ['literal', [0, 0]],
-            ],
+      const arrowLayout = {
+        'symbol-placement': 'line',
+        'symbol-spacing': ['interpolate', ['exponential', 1.5], ['zoom'], 12, 20, 16, 80],
+        'icon-image': arrowIconName,
+        'icon-size': [
+          'interpolate',
+          ['exponential', 1.5],
+          ['zoom'],
+          10,
+          (Math.max(1, l.style.lineWidth / LOW_ZOOM_WIDTH_DIVISOR) / 32) * (useSdf ? 1 : 0.5),
+          18,
+          ((l.style.lineWidth * DEFAULT_LINE_WIDTH_MULTIPLIER) / 24) * (useSdf ? 1 : 0.5),
+        ],
+        'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-padding': 4,
+      };
+      const arrowPaint = {
+        ...(useSdf && {
+          'icon-color': adjustColorBrightness(
+            l.style.lineColor,
+            this.props.isDarkMode ? 0.0 : -0.1,
+            'hsl'
+          ),
+          'icon-halo-width': 1,
+          'icon-halo-blur': 0,
+          'icon-halo-color': this.props.isDarkMode
+            ? MAP_COLORS.DARK.HALO
+            : MAP_COLORS.LIGHT.ICON_HALO,
+        }),
+        'icon-opacity': [
+          'case',
+          ['==', ['get', 'oneway:bicycle'], 'no'],
+          0,
+          ['==', ['get', 'oneway:bicycle'], 'yes'],
+          1,
+          ['==', ['get', 'oneway'], 'no'],
+          0,
+          ['==', ['get', 'oneway'], 'yes'],
+          1,
+          0,
+        ],
+      };
+
+      // Centered arrows for non-sided matches; --left / --right arrow layers
+      // shadow the offset side lines.
+      // Velokarte: MapLibre rejects raw arrays inside expressions; arrays must
+      // be wrapped in `['literal', ...]`. Mapbox tolerated both forms.
+      [
+        { id: arrowLayerId, filter: centerFilter, iconOffset: ['literal', [0, 0]] },
+        { id: arrowLayerId + '--left', filter: leftFilter, iconOffset: ['literal', [0, -44]] },
+        { id: arrowLayerId + '--right', filter: rightFilter, iconOffset: ['literal', [0, 44]] },
+      ].forEach(({ id, filter, iconOffset }) => {
+        this.map.addLayer(
+          {
+            id,
+            type: 'symbol',
+            source: sourceId,
+            'source-layer': sourceLayer,
+            filter,
+            minzoom: 12,
+            layout: { ...arrowLayout, 'icon-offset': iconOffset },
+            paint: arrowPaint,
           },
-          paint: {
-            ...(useSdf && {
-              'icon-color': adjustColorBrightness(
-                l.style.lineColor,
-                this.props.isDarkMode ? 0.0 : -0.1,
-                'hsl'
-              ),
-              'icon-halo-width': 1,
-              'icon-halo-blur': 0,
-              'icon-halo-color': this.props.isDarkMode
-                ? MAP_COLORS.DARK.HALO
-                : MAP_COLORS.LIGHT.ICON_HALO,
-            }),
-            'icon-opacity': [
-              'case',
-              ['==', ['get', 'oneway:bicycle'], 'no'],
-              0,
-              ['==', ['get', 'oneway:bicycle'], 'yes'],
-              1,
-              ['==', ['get', 'oneway'], 'no'],
-              0,
-              ['==', ['get', 'oneway'], 'yes'],
-              1,
-              0,
-            ],
-          },
-        },
-        layerUnderneathName
-      );
+          layerUnderneathName
+        );
+      });
     }
 
     // Muted duplicate of the cycling layer shown only while routes are displayed.
@@ -924,6 +1008,49 @@ class Map extends Component {
       },
       layerUnderneathName
     );
+
+    // Use-sidepath cue: small repeated badge along ways tagged with
+    // bicycle:forward=use_sidepath / bicycle:backward=use_sidepath. The OSM
+    // tag does not encode which side the parallel sidepath is on, so we draw
+    // a directional symbol along the way rather than a fake offset line.
+    // Added once per source (not per cyclepath layer).
+    if (sourceId === 'osmdata' && !this.map.getLayer('use-sidepath-forward')) {
+      const useSidepathPaint = {
+        'icon-color': '#B61815',
+        'icon-halo-width': 1.5,
+        'icon-halo-blur': 0,
+        'icon-halo-color': this.props.isDarkMode
+          ? MAP_COLORS.DARK.HALO
+          : MAP_COLORS.LIGHT.ICON_HALO,
+      };
+      const useSidepathLayout = {
+        'symbol-placement': 'line',
+        'symbol-spacing': ['interpolate', ['exponential', 1.5], ['zoom'], 14, 60, 18, 140],
+        'icon-image': 'arrowSdf',
+        'icon-size': ['interpolate', ['exponential', 1.5], ['zoom'], 14, 0.5, 18, 1.0],
+        'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-padding': 4,
+      };
+      [
+        { id: 'use-sidepath-forward', tag: 'bicycle:forward', rotate: 0 },
+        { id: 'use-sidepath-backward', tag: 'bicycle:backward', rotate: 180 },
+      ].forEach(({ id, tag, rotate }) => {
+        this.map.addLayer(
+          {
+            id,
+            type: 'symbol',
+            source: 'osmdata',
+            filter: ['==', ['get', tag], 'use_sidepath'],
+            minzoom: 14,
+            layout: { ...useSidepathLayout, 'icon-rotate': rotate },
+            paint: useSidepathPaint,
+          },
+          layerUnderneathName
+        );
+      });
+    }
 
     // Only osmdata is interactive
     if (sourceId === 'osmdata') {
@@ -2190,27 +2317,25 @@ class Map extends Component {
           const routesActiveLayerId = layer.id + '--routes-active' + sourceSuffix;
           const arrowLayerId = baseLayerId + '--arrows';
 
-          // Swap between normal and routes-active variants:
-          //   - routesActiveLayerId (idx 1): visible only WITH routes (muted background)
-          //   - baseLayerId & interactiveLayerId (idx 0, 2): visible only WITHOUT routes
-          [baseLayerId, routesActiveLayerId, interactiveLayerId].forEach((id, idx) => {
-            if (!map.getLayer(id)) return;
-            const isRoutesActiveLayer = idx === 1;
-            const status = isRoutesActiveLayer
-              ? layer.isActive && hasRoutes
-                ? 'visible'
-                : 'none'
-              : layer.isActive && !hasRoutes
-                ? 'visible'
-                : 'none';
-            map.setLayoutProperty(id, 'visibility', status);
-          });
+          const leftLayerId = layer.id + '--left' + sourceSuffix;
+          const rightLayerId = layer.id + '--right' + sourceSuffix;
 
-          // Handle arrow layer visibility (same as base layer)
-          if (map.getLayer(arrowLayerId)) {
-            const status = layer.isActive && !hasRoutes ? 'visible' : 'none';
-            map.setLayoutProperty(arrowLayerId, 'visibility', status);
+          // Swap between normal and routes-active variants:
+          //   - routesActiveLayerId: visible only WITH routes (muted background)
+          //   - baseLayerId, side variants & interactiveLayerId: only WITHOUT routes
+          const baseStatus = layer.isActive && !hasRoutes ? 'visible' : 'none';
+          const routesStatus = layer.isActive && hasRoutes ? 'visible' : 'none';
+          [baseLayerId, leftLayerId, rightLayerId, interactiveLayerId].forEach((id) => {
+            if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', baseStatus);
+          });
+          if (map.getLayer(routesActiveLayerId)) {
+            map.setLayoutProperty(routesActiveLayerId, 'visibility', routesStatus);
           }
+
+          // Handle arrow layer visibility (same as base layer) — center + sides
+          [arrowLayerId, arrowLayerId + '--left', arrowLayerId + '--right'].forEach((id) => {
+            if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', baseStatus);
+          });
         });
       } else if (layer.type === 'poi') {
         const isNearDestinationPOI = nearDestinationPOIs.includes(layer.icon);
