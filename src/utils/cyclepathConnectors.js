@@ -183,6 +183,30 @@ export function augmentWithCyclepathConnectors(geoJson, rawElements) {
     }
   }
 
+  // Diagnostic: prints how many sided roads we indexed, how many separate
+  // cycleway endpoints we examined, and how many connectors we emitted. Helps
+  // debug "no connectors generated" cases (most likely cause: Overpass response
+  // shape differs from expected — `nodes` / `geometry` arrays missing).
+  let sourceWayCount = 0;
+  let sourceEndpointsExamined = 0;
+  for (const el of rawElements) {
+    if (el.type === 'way' && isCenterCyclewayWay(el.tags || {})) {
+      sourceWayCount++;
+      if (Array.isArray(el.nodes) && Array.isArray(el.geometry)) {
+        sourceEndpointsExamined += 2;
+      }
+    }
+  }
+  console.debug('[cyclepath connectors]', {
+    sidedRoadNodes: sidedAtNode.size,
+    sourceWayCount,
+    sourceEndpointsExamined,
+    connectorsEmitted: connectors.length,
+    sampleSourceWayKeys:
+      rawElements.find((el) => el.type === 'way' && isCenterCyclewayWay(el.tags || {})) &&
+      Object.keys(rawElements.find((el) => el.type === 'way' && isCenterCyclewayWay(el.tags || {}))),
+  });
+
   if (connectors.length === 0) return geoJson;
   return {
     ...geoJson,
