@@ -260,24 +260,31 @@ class Map extends Component {
 
   // Split a layer's `filters` into entries used for the centered render vs. values
   // pulled out for per-side rendering. AND-grouped entries always stay centered
-  // (none of our AND groups currently use sided cycleway keys).
+  // (none of our AND groups currently use sided cycleway keys). `hasFlatSharedLane`
+  // flags layers that match a bare `cycleway=shared_lane`; those features render
+  // on both sides because in practice a road tagged that way usually has a
+  // shared lane on each side of the carriageway.
   partitionCyclepathFilters(rawFilters) {
     const center = [];
     const leftValues = [];
     const rightValues = [];
     const bothValues = [];
+    let hasFlatSharedLane = false;
     for (const f of rawFilters) {
       if (typeof f[0] === 'string') {
         const [k, v] = f;
         if (k === 'cycleway:left') leftValues.push(v);
         else if (k === 'cycleway:right') rightValues.push(v);
         else if (k === 'cycleway:both') bothValues.push(v);
-        else center.push(f);
+        else {
+          if (k === 'cycleway' && v === 'shared_lane') hasFlatSharedLane = true;
+          center.push(f);
+        }
       } else {
         center.push(f);
       }
     }
-    return { center, leftValues, rightValues, bothValues };
+    return { center, leftValues, rightValues, bothValues, hasFlatSharedLane };
   }
 
   // Filter that matches features needing render on one side. Includes both
@@ -299,22 +306,47 @@ class Map extends Component {
   // dynamic refresh in hideGeoJsonFromPmtiles. `full` matches every feature
   // listed in `l.filters` (used for hover/click hit-testing and the muted
   // routes-active backdrop). `center` excludes sided cycleway tags so those
-  // features render only via the offset side layers.
+  // features render only via the offset side layers. Flat `cycleway=shared_lane`
+  // is also routed to both sides — see partitionCyclepathFilters.
   computeCyclepathFilters(l, sourceId) {
     const partition = this.partitionCyclepathFilters(l.filters);
+    const sharedLaneFilter = partition.hasFlatSharedLane
+      ? ['==', ['get', 'cycleway'], 'shared_lane']
+      : null;
+
+    const centerBase = this.entriesToMapboxAny(partition.center);
+    const center = sharedLaneFilter
+      ? ['all', centerBase, ['!', sharedLaneFilter]]
+      : centerBase;
+
+    const augmentSide = (sideFilter) => {
+      if (!sharedLaneFilter) return sideFilter;
+      return ['any', sideFilter, sharedLaneFilter];
+    };
+
     return {
       full: this.withGeoJsonHide(this.entriesToMapboxAny(l.filters), sourceId),
-      center: this.withGeoJsonHide(this.entriesToMapboxAny(partition.center), sourceId),
-      left: this.buildSideMatchFilter(
-        'cycleway:left',
-        partition.leftValues,
-        partition.bothValues,
+      center: this.withGeoJsonHide(center, sourceId),
+      left: this.withGeoJsonHide(
+        augmentSide(
+          this.buildSideMatchFilter(
+            'cycleway:left',
+            partition.leftValues,
+            partition.bothValues,
+            null
+          )
+        ),
         sourceId
       ),
-      right: this.buildSideMatchFilter(
-        'cycleway:right',
-        partition.rightValues,
-        partition.bothValues,
+      right: this.withGeoJsonHide(
+        augmentSide(
+          this.buildSideMatchFilter(
+            'cycleway:right',
+            partition.rightValues,
+            partition.bothValues,
+            null
+          )
+        ),
         sourceId
       ),
     };
@@ -836,8 +868,11 @@ class Map extends Component {
       18,
       l.style.lineWidth * DEFAULT_LINE_WIDTH_MULTIPLIER,
     ];
+    // Always round-join so sharp interior corners look smooth. Dashed lines
+    // keep the default butt cap (round caps would turn each dash into a pill).
     const cyclepathLineLayout = {
-      ...(l.style.lineStyle === 'dashed' ? {} : { 'line-join': 'round', 'line-cap': 'round' }),
+      'line-join': 'round',
+      ...(l.style.lineStyle === 'dashed' ? {} : { 'line-cap': 'round' }),
     };
     const cyclepathLineDash = l.style.lineStyle === 'dashed' ? dashedLineStyle : {};
 
@@ -1002,55 +1037,13 @@ class Map extends Component {
           ...(l.style.lineStyle === 'dashed' && dashedLineStyle),
         },
         layout: {
-          ...(l.style.lineStyle === 'dashed' ? {} : { 'line-join': 'round', 'line-cap': 'round' }),
+          'line-join': 'round',
+          ...(l.style.lineStyle === 'dashed' ? {} : { 'line-cap': 'round' }),
           visibility: 'none',
         },
       },
       layerUnderneathName
     );
-
-    // Use-sidepath cue: small repeated badge along ways tagged with
-    // bicycle:forward=use_sidepath / bicycle:backward=use_sidepath. The OSM
-    // tag does not encode which side the parallel sidepath is on, so we draw
-    // a directional symbol along the way rather than a fake offset line.
-    // Added once per source (not per cyclepath layer).
-    if (sourceId === 'osmdata' && !this.map.getLayer('use-sidepath-forward')) {
-      const useSidepathPaint = {
-        'icon-color': '#B61815',
-        'icon-halo-width': 1.5,
-        'icon-halo-blur': 0,
-        'icon-halo-color': this.props.isDarkMode
-          ? MAP_COLORS.DARK.HALO
-          : MAP_COLORS.LIGHT.ICON_HALO,
-      };
-      const useSidepathLayout = {
-        'symbol-placement': 'line',
-        'symbol-spacing': ['interpolate', ['exponential', 1.5], ['zoom'], 14, 60, 18, 140],
-        'icon-image': 'arrowSdf',
-        'icon-size': ['interpolate', ['exponential', 1.5], ['zoom'], 14, 0.5, 18, 1.0],
-        'icon-rotation-alignment': 'map',
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-        'icon-padding': 4,
-      };
-      [
-        { id: 'use-sidepath-forward', tag: 'bicycle:forward', rotate: 0 },
-        { id: 'use-sidepath-backward', tag: 'bicycle:backward', rotate: 180 },
-      ].forEach(({ id, tag, rotate }) => {
-        this.map.addLayer(
-          {
-            id,
-            type: 'symbol',
-            source: 'osmdata',
-            filter: ['==', ['get', tag], 'use_sidepath'],
-            minzoom: 14,
-            layout: { ...useSidepathLayout, 'icon-rotate': rotate },
-            paint: useSidepathPaint,
-          },
-          layerUnderneathName
-        );
-      });
-    }
 
     // Only osmdata is interactive
     if (sourceId === 'osmdata') {
