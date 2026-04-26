@@ -669,13 +669,13 @@ class Map extends Component {
       id: STREET_LAMP_LAYER_BLOOM,
       type: 'symbol',
       source: STREET_LAMP_SOURCE,
-      minzoom: 13.5,
+      minzoom: 15,
       layout: {
         visibility: visible,
         'icon-image': dark ? STREET_LAMP_SPRITE_DARK : STREET_LAMP_SPRITE_LIGHT,
         'icon-size': dark
-          ? ['interpolate', ['linear'], ['zoom'], 13.5, 0.10, 15, 0.18, 16, 0.28, 17, 0.40, 18, 0.55, 20, 0.85]
-          : ['interpolate', ['linear'], ['zoom'], 13.5, 0.07, 15, 0.12, 16, 0.18, 17, 0.25, 18, 0.34, 20, 0.50],
+          ? ['interpolate', ['linear'], ['zoom'], 15, 0.12, 16, 0.22, 17, 0.34, 18, 0.50, 20, 0.85]
+          : ['interpolate', ['linear'], ['zoom'], 15, 0.08, 16, 0.14, 17, 0.20, 18, 0.30, 20, 0.50],
         'icon-allow-overlap': true,
         'icon-ignore-placement': true,
         'icon-pitch-alignment': 'map',
@@ -683,8 +683,8 @@ class Map extends Component {
       },
       paint: {
         'icon-opacity': dark
-          ? ['interpolate', ['linear'], ['zoom'], 13.5, 0.65, 16, 0.88, 20, 0.95]
-          : ['interpolate', ['linear'], ['zoom'], 13.5, 0.45, 16, 0.65, 20, 0.75],
+          ? ['interpolate', ['linear'], ['zoom'], 15, 0.65, 16, 0.85, 20, 0.95]
+          : ['interpolate', ['linear'], ['zoom'], 15, 0.45, 16, 0.65, 20, 0.75],
       },
     });
 
@@ -722,15 +722,15 @@ class Map extends Component {
         STREET_LAMP_LAYER_BLOOM,
         'icon-size',
         dark
-          ? ['interpolate', ['linear'], ['zoom'], 13.5, 0.10, 15, 0.18, 16, 0.28, 17, 0.40, 18, 0.55, 20, 0.85]
-          : ['interpolate', ['linear'], ['zoom'], 13.5, 0.07, 15, 0.12, 16, 0.18, 17, 0.25, 18, 0.34, 20, 0.50]
+          ? ['interpolate', ['linear'], ['zoom'], 15, 0.12, 16, 0.22, 17, 0.34, 18, 0.50, 20, 0.85]
+          : ['interpolate', ['linear'], ['zoom'], 15, 0.08, 16, 0.14, 17, 0.20, 18, 0.30, 20, 0.50]
       );
       this.map.setPaintProperty(
         STREET_LAMP_LAYER_BLOOM,
         'icon-opacity',
         dark
-          ? ['interpolate', ['linear'], ['zoom'], 13.5, 0.65, 16, 0.88, 20, 0.95]
-          : ['interpolate', ['linear'], ['zoom'], 13.5, 0.45, 16, 0.65, 20, 0.75]
+          ? ['interpolate', ['linear'], ['zoom'], 15, 0.65, 16, 0.85, 20, 0.95]
+          : ['interpolate', ['linear'], ['zoom'], 15, 0.45, 16, 0.65, 20, 0.75]
       );
     }
     if (this.map.getLayer(STREET_LAMP_LAYER_CORE)) {
