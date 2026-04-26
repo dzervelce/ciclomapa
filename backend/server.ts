@@ -137,6 +137,144 @@ async function handleStatsList(req: Request): Promise<Response> {
 const OVERPASS_UPSTREAM = 'https://overpass-api.de/api/interpreter';
 const OVERPASS_UA = 'velokarte/0.1 (+https://velokarte.pocs.dev)';
 
+const STREET_LAMP_STALE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+interface LampFeatureCollection {
+  type: 'FeatureCollection';
+  features: Array<{
+    type: 'Feature';
+    id: number;
+    geometry: { type: 'Point'; coordinates: [number, number] };
+    properties: Record<string, never>;
+  }>;
+}
+
+const inFlightLampFetches = new Map<string, Promise<LampFeatureCollection>>();
+
+async function fetchLampsFromOverpass(areaLabel: string): Promise<LampFeatureCollection> {
+  // City portion only (first comma segment); Overpass's area lookup matches
+  // by name and is happy with bare city names.
+  const cityName = areaLabel.split(',')[0].trim().replace(/"/g, '');
+  if (!cityName) throw new Error('empty_area');
+
+  const query = `[out:json][timeout:300];area["name"="${cityName}"]->.a;node["highway"="street_lamp"](area.a);out skel;`;
+
+  const upstreamRes = await fetch(OVERPASS_UPSTREAM, {
+    method: 'POST',
+    headers: {
+      'User-Agent': OVERPASS_UA,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: 'data=' + encodeURIComponent(query),
+  });
+
+  if (!upstreamRes.ok) {
+    const body = await upstreamRes.text().catch(() => '');
+    throw new Error(`overpass_${upstreamRes.status}: ${body.slice(0, 200)}`);
+  }
+
+  const data = (await upstreamRes.json()) as {
+    elements?: Array<{ type: string; id: number; lon: number; lat: number }>;
+  };
+  const features = (data.elements ?? [])
+    .filter(
+      (el) => el.type === 'node' && Number.isFinite(el.lon) && Number.isFinite(el.lat)
+    )
+    .map((el) => ({
+      type: 'Feature' as const,
+      id: el.id,
+      geometry: { type: 'Point' as const, coordinates: [el.lon, el.lat] as [number, number] },
+      properties: {},
+    }));
+  return { type: 'FeatureCollection', features };
+}
+
+async function refreshLampsCache(slug: string, areaLabel: string): Promise<LampFeatureCollection> {
+  const existing = inFlightLampFetches.get(slug);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    const fc = await fetchLampsFromOverpass(areaLabel);
+    await sql`
+      INSERT INTO street_lamps (slug, area_label, geojson, point_count, updated_at)
+      VALUES (
+        ${slug},
+        ${areaLabel},
+        ${fc},
+        ${fc.features.length},
+        now()
+      )
+      ON CONFLICT (slug) DO UPDATE SET
+        area_label  = EXCLUDED.area_label,
+        geojson     = EXCLUDED.geojson,
+        point_count = EXCLUDED.point_count,
+        updated_at  = now()
+    `;
+    return fc;
+  })();
+
+  inFlightLampFetches.set(slug, promise);
+  try {
+    return await promise;
+  } finally {
+    inFlightLampFetches.delete(slug);
+  }
+}
+
+async function handleStreetLamps(slug: string, req: Request): Promise<Response> {
+  if (!SLUG_RE.test(slug)) return badRequest('invalid_slug');
+  if (req.method !== 'GET') return methodNotAllowed();
+
+  const areaLabel = new URL(req.url).searchParams.get('area') || '';
+
+  const rows = await sql`
+    SELECT area_label, geojson, point_count, updated_at
+    FROM street_lamps
+    WHERE slug = ${slug}
+  `;
+
+  if (rows.length > 0) {
+    const row = rows[0];
+    const age = Date.now() - new Date(row.updated_at).getTime();
+    if (age < STREET_LAMP_STALE_MS) {
+      return json({
+        geoJson: row.geojson,
+        pointCount: row.point_count,
+        updatedAt: row.updated_at,
+      });
+    }
+    // Stale — return what we have now and refresh in the background so the
+    // caller doesn't block on Overpass.
+    if (areaLabel) {
+      refreshLampsCache(slug, areaLabel).catch((err) =>
+        console.error('[street-lamps] background refresh failed:', err)
+      );
+    }
+    return json({
+      geoJson: row.geojson,
+      pointCount: row.point_count,
+      updatedAt: row.updated_at,
+      stale: true,
+    });
+  }
+
+  // Cold cache — must fetch synchronously so the user sees something.
+  if (!areaLabel) return badRequest('missing_area_for_cold_cache');
+
+  try {
+    const fc = await refreshLampsCache(slug, areaLabel);
+    return json({
+      geoJson: fc,
+      pointCount: fc.features.length,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('[street-lamps] cold fetch failed:', err);
+    return json({ error: 'street_lamps_fetch_failed', detail: String(err) }, { status: 502 });
+  }
+}
+
 async function handleOverpass(req: Request): Promise<Response> {
   let dataParam: string | null = null;
 
@@ -210,6 +348,11 @@ Bun.serve({
 
     if (path === '/api/overpass') {
       return handleOverpass(req);
+    }
+
+    const lampsMatch = path.match(/^\/api\/street-lamps\/([^/]+)$/);
+    if (lampsMatch) {
+      return handleStreetLamps(decodeURIComponent(lampsMatch[1]), req);
     }
 
     return notFound();

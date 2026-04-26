@@ -43,7 +43,7 @@ import AirtableDatabase from './AirtableDatabase.js';
 import CommentModal from './CommentModal.js';
 import NewCommentCursor from './NewCommentCursor.js';
 import MapPopups from './MapPopups.js';
-import { adjustColorBrightness } from './utils/utils.js';
+import { adjustColorBrightness, slugify } from './utils/utils.js';
 import debounce from 'lodash.debounce';
 import { getCurrentSunPosition } from './sunPositionUtils';
 import { arrowIconsByLayer, arrowIcons, arrowSdf, iconsMap } from './features/map/icons';
@@ -92,7 +92,6 @@ const STREET_LAMP_LAYER_BLOOM = 'street-lamp-bloom';
 const STREET_LAMP_LAYER_CORE = 'street-lamp-core';
 const STREET_LAMP_SPRITE_DARK = 'street-lamp-bloom-dark';
 const STREET_LAMP_SPRITE_LIGHT = 'street-lamp-bloom-light';
-const STREET_LAMP_FETCH_MIN_ZOOM = 13.5;
 
 // Bake a believable lamp into a radial-gradient sprite. A real multi-stop
 // alpha curve reads as light; circle-blur reads as a fuzzy disc.
@@ -218,10 +217,6 @@ class Map extends Component {
 
   onMapMoveEnded() {
     this.syncMapState();
-
-    if (this.props.showStreetLamps) {
-      this.fetchStreetLamps();
-    }
 
     if (this.map.getZoom() > MAP_AUTOCHANGE_AREA_ZOOM_THRESHOLD) {
       const center = this.map.getCenter();
@@ -760,39 +755,31 @@ class Map extends Component {
 
   fetchStreetLamps = async () => {
     if (!this.map || !this.props.showStreetLamps) return;
-    if (this.map.getZoom() < STREET_LAMP_FETCH_MIN_ZOOM) return;
-
-    const bounds = this.map.getBounds();
-    const south = bounds.getSouth().toFixed(5);
-    const west = bounds.getWest().toFixed(5);
-    const north = bounds.getNorth().toFixed(5);
-    const east = bounds.getEast().toFixed(5);
+    const areaLabel = this.props.location;
+    if (!areaLabel) return;
+    const slug = slugify(areaLabel);
+    if (!slug) return;
 
     if (this.streetLampAbort) this.streetLampAbort.abort();
     const ac = new AbortController();
     this.streetLampAbort = ac;
-
-    const query = `[out:json][timeout:60];node["highway"="street_lamp"](${south},${west},${north},${east});out skel;`;
+    this.lastFetchedLampSlug = slug;
 
     try {
-      const res = await fetch('/api/overpass?data=' + encodeURIComponent(query), {
-        signal: ac.signal,
-      });
+      const url =
+        '/api/street-lamps/' +
+        encodeURIComponent(slug) +
+        '?area=' +
+        encodeURIComponent(areaLabel);
+      const res = await fetch(url, { signal: ac.signal });
       if (!res.ok) {
-        console.warn('[street-lamps] overpass returned', res.status);
+        console.warn('[street-lamps] api returned', res.status);
         return;
       }
       const data = await res.json();
-      const features = (data.elements || [])
-        .filter((el) => el.type === 'node' && Number.isFinite(el.lon) && Number.isFinite(el.lat))
-        .map((el) => ({
-          type: 'Feature',
-          id: el.id,
-          geometry: { type: 'Point', coordinates: [el.lon, el.lat] },
-          properties: {},
-        }));
+      if (!data?.geoJson?.features) return;
       const src = this.map && this.map.getSource(STREET_LAMP_SOURCE);
-      if (src) src.setData({ type: 'FeatureCollection', features });
+      if (src) src.setData(data.geoJson);
     } catch (err) {
       if (err.name === 'AbortError') return;
       console.warn('[street-lamps] fetch failed', err);
@@ -2066,6 +2053,12 @@ class Map extends Component {
       } else if (this.streetLampAbort) {
         this.streetLampAbort.abort();
       }
+    } else if (
+      this.props.showStreetLamps &&
+      this.props.location !== prevProps.location &&
+      slugify(this.props.location || '') !== this.lastFetchedLampSlug
+    ) {
+      this.fetchStreetLamps();
     }
 
     if (this.props.showSatellite !== prevProps.showSatellite) {
