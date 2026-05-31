@@ -5,15 +5,16 @@ const { defaultAlgorithm, darkAlgorithm } = theme;
 /** Matches legacy CicloMapa branding; dark tokens align with former antd.dark.less base. */
 const BRAND_TOKEN = {
   colorPrimary: 'black',
-  colorLink: '#ffffff',
+  colorLink: 'black',
+  colorLinkHover: '#444444',
   borderRadius: 8,
-  fontFamily: "'IBM Plex Sans', sans-serif",
+  fontFamily: "'Inter', sans-serif",
 };
 
 const DARK_EXTRA = {
   // colorPrimary: '#b6f9d1',
   // colorPrimary: '#4ea76f',
-  colorPrimary: '#FFFFFF',
+  colorPrimary: 'white',
   // colorPrimaryText: 'black',
   // `Button[type="primary"]` uses the "light solid" text token for its label.
   // When `colorPrimary` is white, the default label also becomes white unless
@@ -21,7 +22,8 @@ const DARK_EXTRA = {
   colorTextLightSolid: 'black',
   colorTextLightSolidHover: 'black',
   colorTextLightSolidActive: 'black',
-  // colorLink: 'white',
+  colorLink: 'white',
+  colorLinkHover: '#aaaaaa',
   // colorText: 'white',
   // colorBgBase: '#141414',
   // colorBgContainer: '#141414',

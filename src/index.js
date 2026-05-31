@@ -1,17 +1,35 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import ReactDOM from 'react-dom/client'; // Note the updated import
 import App from './App';
 import * as serviceWorkerRegistration from './serviceWorkerRegistration';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { getCssCustomProperties } from './config/design-tokens.js';
-
+import { IS_PROD } from './config/constants.js';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 // Velokarte: bootstrap i18n (LV default, EN fallback) before any UI renders.
 import './i18n';
+
+// Dev-only screen: lazy so its module (and helpers under ./dev/) stay out of the initial
+// bundle; the rest of the app still loads App and friends eagerly on every visit.
+const PlaceTypeIconsReviewPage = React.lazy(() =>
+  IS_PROD ? Promise.resolve({ default: () => null }) : import('./dev/PlaceTypeIconsReviewPage.jsx')
+);
 
 // No-op console.debug in production to reduce noise
 if (process.env.NODE_ENV === 'production') {
   console.debug = () => {};
 }
+
+// Inter font: non-blocking (preconnect hints in public/index.html)
+(function loadInterFont() {
+  if (document.getElementById('ciclomapa-inter-font')) return;
+  const link = document.createElement('link');
+  link.id = 'ciclomapa-inter-font';
+  link.rel = 'stylesheet';
+  link.href =
+    'https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,500..700;1,500..700&display=swap';
+  document.head.appendChild(link);
+})();
 
 // Expose design tokens as CSS custom properties
 const tokens = getCssCustomProperties();
@@ -68,6 +86,16 @@ function AppRoutes() {
       <Route path="/routes" element={<App ref={appRef} />} />
       <Route path="/:city/routes" element={<App ref={appRef} />} />
       <Route path="/:city" element={<App ref={appRef} />} />
+      {!IS_PROD ? (
+        <Route
+          path="/dev/place-type-icons"
+          element={
+            <Suspense fallback={null}>
+              <PlaceTypeIconsReviewPage />
+            </Suspense>
+          }
+        />
+      ) : null}
     </Routes>
   );
 }
@@ -76,6 +104,7 @@ function AppRoutes() {
 root.render(
   <Router>
     <AppRoutes />
+    <SpeedInsights />
   </Router>
 );
 

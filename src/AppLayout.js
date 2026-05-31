@@ -3,6 +3,7 @@
  * Receives state and handlers from App to keep App.js focused on state and logic.
  */
 import React from 'react';
+import PropTypes from 'prop-types';
 import AboutModal from './AboutModal.js';
 import LayersLegendModal from './LayersLegendModal.js';
 import Map from './Map.js';
@@ -13,6 +14,7 @@ import LayersBar from './LayersBar.js';
 import DirectionsPanel from './DirectionsPanel.js';
 import AnalyticsSidebar from './AnalyticsSidebar.js';
 import { IS_MOBILE, IS_PROD, ENABLE_SATELLITE_TOGGLE } from './config/constants.js';
+import ApiDebugOverlay from './dev/ApiDebugOverlay.jsx';
 
 export default function AppLayout({
   state,
@@ -24,7 +26,10 @@ export default function AppLayout({
   return (
     <div
       id="ciclomapa"
-      className={[state.hideUI ? 'hideUI' : '', state.isSidebarOpen ? 'analyticsSidebarOpen' : '']
+      className={[
+        state.hideUI || state.hideUIFromUrl ? 'hideUI' : '',
+        state.isSidebarOpen ? 'analyticsSidebarOpen' : '',
+      ]
         .filter(Boolean)
         .join(' ')}
     >
@@ -51,6 +56,7 @@ export default function AppLayout({
                 isSidebarOpen={state.isSidebarOpen}
                 toggleSidebar={handlers.toggleSidebar}
                 embedMode={state.embedMode}
+                debugMode={state.debugMode}
                 openAboutModal={handlers.openAboutModal}
                 isDarkMode={state.isDarkMode}
                 toggleTheme={handlers.toggleTheme}
@@ -60,33 +66,40 @@ export default function AppLayout({
               />
             </header>
           )}
-          <Map
-            key={state.mapKey}
-            ref={(map) => {
-              if (!IS_PROD && state.debugMode) {
-                window.map = map;
-              }
-            }}
-            data={state.geoJson}
-            layers={state.layers}
-            style={state.mapStyle}
-            zoom={state.zoom}
-            lat={state.lat}
-            lng={state.lng}
-            showSatellite={ENABLE_SATELLITE_TOGGLE ? state.showSatellite : false}
-            location={state.area}
-            onMapMoved={handlers.onMapMoved}
-            updateLengths={handlers.updateLengths}
-            embedMode={state.embedMode}
-            debugMode={state.debugMode}
-            isDarkMode={state.isDarkMode}
-            showStreetLamps={state.showStreetLamps}
-            setMapRef={handlers.setMapRef}
-            directionsPanelRef={directionsPanelRef}
-            toPoint={state.toPoint}
-            isTrackingUserLocation={state.isTrackingUserLocation}
-            onTrackingUserLocationChange={handlers.onTrackingUserLocationChange}
-          />
+          {state.mapBootReady ? (
+            <Map
+              key={state.mapKey}
+              ref={(map) => {
+                if (!IS_PROD && state.debugMode) {
+                  window.map = map;
+                }
+              }}
+              data={state.geoJson}
+              layers={state.layers}
+              style={state.mapStyle}
+              zoom={state.zoom}
+              lat={state.lat}
+              lng={state.lng}
+              showSatellite={ENABLE_SATELLITE_TOGGLE ? state.showSatellite : false}
+              location={state.area}
+              onMapMoved={handlers.onMapMoved}
+              updateLengths={handlers.updateLengths}
+              embedMode={state.embedMode}
+              debugMode={state.debugMode}
+              isDarkMode={state.isDarkMode}
+              showStreetLamps={state.showStreetLamps}
+              setMapRef={handlers.setMapRef}
+              directionsPanelRef={directionsPanelRef}
+              toPoint={state.toPoint}
+              isTrackingUserLocation={state.isTrackingUserLocation}
+              onTrackingUserLocationChange={handlers.onTrackingUserLocationChange}
+              globalSearchPin={state.globalSearchPin}
+              onGlobalSearchPinDismiss={handlers.clearGlobalSearchPin}
+              favorites={state.favorites}
+              onFavoritesChanged={handlers.handleFavoritesChanged}
+              cleanMode={state.cleanMode}
+            />
+          ) : null}
 
           {!IS_MOBILE && !state.embedMode && (
             <aside
@@ -118,7 +131,16 @@ export default function AppLayout({
         </main>
       </div>
 
-      <CitySwitcherModal />
+      <CitySwitcherModal
+        mapCenter={
+          typeof state.lat === 'number' && typeof state.lng === 'number'
+            ? { lat: state.lat, lng: state.lng }
+            : null
+        }
+        onPlacesResultSelected={handlers.handleGlobalSearchPlaceSelect}
+        onCatalogCityPicked={handlers.clearGlobalSearchPin}
+        onFavoritesChanged={handlers.handleFavoritesChanged}
+      />
 
       {!(IS_MOBILE && state.isDirectionsPanelOpen) && (
         <nav aria-label="Camadas do mapa">
@@ -139,6 +161,7 @@ export default function AppLayout({
           onLayersChange={handlers.onLayersChange}
           embedMode={state.embedMode}
           isDarkMode={state.isDarkMode}
+          openLayersLegendModal={handlers.openLayersLegendModal}
         />
       </aside>
 
@@ -186,6 +209,74 @@ export default function AppLayout({
         isDarkMode={state.isDarkMode}
         scrollToSection={state.layersLegendScrollToSection}
       />
+
+      {state.debugMode && <ApiDebugOverlay />}
     </div>
   );
 }
+
+AppLayout.propTypes = {
+  seoPageTitle: PropTypes.string,
+  cityCanonicalSlug: PropTypes.string,
+  directionsPanelRef: PropTypes.object,
+  state: PropTypes.shape({
+    hideUI: PropTypes.bool,
+    hideUIFromUrl: PropTypes.bool,
+    isSidebarOpen: PropTypes.bool,
+    isDirectionsPanelOpen: PropTypes.bool,
+    area: PropTypes.string,
+    dataUpdatedAt: PropTypes.string,
+    lat: PropTypes.number,
+    lng: PropTypes.number,
+    zoom: PropTypes.number,
+    embedMode: PropTypes.bool,
+    isDarkMode: PropTypes.bool,
+    loading: PropTypes.bool,
+    mapKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    debugMode: PropTypes.bool,
+    geoJson: PropTypes.object,
+    layers: PropTypes.array,
+    mapStyle: PropTypes.string,
+    showSatellite: PropTypes.bool,
+    toPoint: PropTypes.object,
+    fromPoint: PropTypes.object,
+    isTrackingUserLocation: PropTypes.bool,
+    globalSearchPin: PropTypes.object,
+    favorites: PropTypes.oneOfType([PropTypes.array, PropTypes.object]),
+    cleanMode: PropTypes.bool,
+    lengths: PropTypes.object,
+    airtableCityFields: PropTypes.object,
+    lengthCalculationStrategy: PropTypes.string,
+    map: PropTypes.object,
+    aboutModal: PropTypes.bool,
+    mapBootReady: PropTypes.bool,
+    layersLegendModal: PropTypes.bool,
+    layersLegendScrollToSection: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  }).isRequired,
+  handlers: PropTypes.shape({
+    downloadData: PropTypes.func,
+    onMapMoved: PropTypes.func,
+    forceUpdate: PropTypes.func,
+    toggleSidebar: PropTypes.func,
+    openAboutModal: PropTypes.func,
+    toggleTheme: PropTypes.func,
+    updateLengths: PropTypes.func,
+    setMapRef: PropTypes.func,
+    onTrackingUserLocationChange: PropTypes.func,
+    clearGlobalSearchPin: PropTypes.func,
+    handleFavoritesChanged: PropTypes.func,
+    onLayersChange: PropTypes.func,
+    openLayersLegendModal: PropTypes.func,
+    handleGlobalSearchPlaceSelect: PropTypes.func,
+    setDirectionsPanelRef: PropTypes.func,
+    setFromPoint: PropTypes.func,
+    setToPoint: PropTypes.func,
+    clearRoutePoints: PropTypes.func,
+    onDirectionsPanelToggle: PropTypes.func,
+    setArea: PropTypes.func,
+    closeAboutModal: PropTypes.func,
+    openCityPicker: PropTypes.func,
+    closeLayersLegendModal: PropTypes.func,
+    onChangeStrategy: PropTypes.func,
+  }).isRequired,
+};

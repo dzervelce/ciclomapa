@@ -38,6 +38,14 @@ export function shouldAutoOpenWelcomeAboutModal(options) {
   const embedMode = options?.embedMode === true;
   if (embedMode) return false;
 
+  if (typeof window !== 'undefined') {
+    try {
+      if (new URLSearchParams(window.location.search).has('e2e')) return false;
+    } catch {
+      /* ignore */
+    }
+  }
+
   if (!IS_PROD && ABOUT_MODAL_ALWAYS_AUTO_OPEN_IN_NON_PROD) {
     return fromMount;
   }
@@ -54,6 +62,17 @@ export function maybeAutoOpenWelcomeAboutModal(options) {
   if (typeof openAboutModal !== 'function') return;
   if (!shouldAutoOpenWelcomeAboutModal(options)) return;
   openAboutModal();
+}
+
+/** First-visit welcome: paint modal before Mapbox + geo data boot. */
+export function shouldDeferMapBootUntilAfterPaint(options) {
+  return shouldAutoOpenWelcomeAboutModal(options);
+}
+
+export function scheduleAfterFirstPaint(callback) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(callback);
+  });
 }
 
 /**
@@ -222,7 +241,11 @@ function AboutModal({
           <header className="flex items-start justify-between gap-4 mb-5 sm:mb-2">
             <div className="-ml-0.5">
               <Logo
-                className={cityContext ? `b-and-w opacity-30` : 'text-5xl sm:text-6xl mt-4 mb-6'}
+                className={
+                  cityContext
+                    ? `text-xs b-and-w opacity-30`
+                    : 'text-4xl sm:text-5xl tracking-tight mt-4 sm:mb-6 mb-0'
+                }
               />
             </div>
             <Button
@@ -241,7 +264,7 @@ function AboutModal({
                   id="about-modal-title"
                   data-testid="about-modal-title"
                   data-about-city-slug={cityCanonicalSlug}
-                  className="text-5xl sm:text-6xl leading-none mb-4 font-heading-display"
+                  className="text-4xl sm:text-5xl tracking-tight leading-none mb-5 font-heading-display mt-7"
                 >
                   {cityContext.primary}
                 </h2>
@@ -374,7 +397,7 @@ function AboutModal({
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className={`rounded-xl px-4 py-5 text-center ${cardSurface}`}>
                         <p
-                          className={`text-3xl sm:text-4xl font-bold tabular-nums leading-none m-0 mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                          className={`text-4xl sm:text-5xl font-bold tabular-nums leading-none m-0 mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
                           aria-live="polite"
                         >
                           {mapDataLoading
@@ -390,7 +413,7 @@ function AboutModal({
                       </div>
                       <div className={`rounded-xl px-4 py-5 text-center ${cardSurface}`}>
                         <p
-                          className={`text-3xl sm:text-4xl font-bold tabular-nums leading-none m-0 mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                          className={`text-4xl sm:text-5xl font-bold tabular-nums leading-none m-0 mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
                         >
                           {mapDataLoading ? '…' : metrics.poiTotal.toLocaleString('pt-BR')}
                         </p>
@@ -403,7 +426,7 @@ function AboutModal({
                       </div>
                       <div className={`rounded-xl px-4 py-5 text-center ${cardSurface}`}>
                         <p
-                          className={`text-3xl sm:text-4xl font-bold tabular-nums leading-none m-0 mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                          className={`text-4xl sm:text-5xl font-bold tabular-nums leading-none m-0 mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
                         >
                           {!airtableMetadataLoaded
                             ? '…'

@@ -4,10 +4,20 @@ import { DirectionsProvider } from './contexts/DirectionsContext';
 import DirectionsPanel from './DirectionsPanel.js';
 
 jest.mock('mapbox-gl', () => ({ default: {} }));
-jest.mock('./GooglePlacesGeocoder.js', () => ({
-  __esModule: true,
-  default: class GooglePlacesGeocoder {},
-}));
+jest.mock('./googlePlacesClient.js', () => {
+  const actual = jest.requireActual('./googlePlacesClient.js');
+  return {
+    getCityFromResultLike: actual.getCityFromResultLike,
+    getAreaStringFromResultLike: actual.getAreaStringFromResultLike,
+    getGooglePlacesGeocoder: jest.fn().mockReturnValue({
+      search: jest.fn(),
+      getPlaceDetails: jest.fn(),
+      reverseGeocode: jest.fn(),
+      loadGoogleMapsAPI: jest.fn(),
+    }),
+    ensureGooglePlacesReady: jest.fn().mockResolvedValue(undefined),
+  };
+});
 
 const noop = () => {};
 
@@ -44,4 +54,16 @@ it('renders DirectionsPanel with DirectionsProvider and shows key UI', () => {
     document.querySelector('input[placeholder="Destino"]') ||
     document.querySelector('input[placeholder*="estino"]');
   expect(rotas || origemPlaceholder || destinoPlaceholder).toBeTruthy();
+});
+
+it('shows legend link in panel header', () => {
+  render(
+    <DirectionsProvider>
+      <DirectionsPanel {...defaultProps} />
+    </DirectionsProvider>
+  );
+  expect(screen.getByTestId('directions-panel-legend-link')).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: /como interpretar o mapa e as rotas/i })
+  ).toBeInTheDocument();
 });

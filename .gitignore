@@ -20,6 +20,8 @@ npm-shrinkwrap.json
 *.geojson
 *.pmtiles
 test-results/
+playwright-report/
+blob-report/
 
 # Velokarte: local-only
 CLAUDE.md

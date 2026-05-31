@@ -17,6 +17,7 @@ export const colors = {
   routeUnselectedDark: '#999999',
   routeSelectedLight: '#EA9010',
   routeUnselectedLight: '#cac7c4',
+  // routeUnselectedLight: '#8F8A86',
   // Loader / progress
   loader1: '#059669',
   loader2: '#b4fad0',
@@ -25,6 +26,10 @@ export const colors = {
   // Logo (TopBar)
   logoDark: '#B6F9D1',
   logoLight: '#39583C',
+  /** Favorites: hearts, active “Favoritar” on light surfaces; map `poi-favorite--light` should stay aligned. */
+  favoriteAccent: '#F63737',
+  /** Favorites on dark surfaces (`theme-dark`); slightly lighter for contrast — align `poi-favorite.png` if needed. */
+  favoriteAccentDark: '#FF6B6B',
 };
 
 /** Map-specific colors for Mapbox paint (Map.js). Theme-based stroke, halo, route padding line, fallback. */
@@ -82,14 +87,15 @@ export const motion = {
 };
 
 /** Focus ring for keyboard navigation / a11y */
-export const focusRing = '2px solid #0ea5e9';
+// export const focusRing = '2px solid #0ea5e9';
+export const focusRing = 'none';
 
 export const layout = {
   spinnerSize: 60,
   progressBarHeight: 4,
 };
 
-/** For JS consumers that need route colors by theme (e.g. Map.js, InfrastructureBadge.js) */
+/** For JS consumers that need route colors by theme (e.g. Map.js, infrastructure badges). */
 export const ROUTE_COLORS = {
   DARK: {
     SELECTED: colors.routeSelectedDark,
@@ -100,6 +106,38 @@ export const ROUTE_COLORS = {
     UNSELECTED: colors.routeUnselectedLight,
   },
 };
+
+/** Favorites UI (import from JS when you need hex/RGB, e.g. charts or inline styles). */
+export const FAVORITE_COLORS = {
+  ACCENT: colors.favoriteAccent,
+  ACCENT_DARK: colors.favoriteAccentDark,
+};
+
+/**
+ * Infrastructure badge palette — route breakdown, legend, and panel tags.
+ * Base hues: cycle types from layers.json (`lineColor` / `lineColorDark`), rua from
+ * `ROUTE_COLORS.SELECTED`. `layerBrightnessAdjust` shifts each base for the badge fill (light
+ * mode); the same delta is negated in dark mode. Text color uses WCAG 2.x AA in InfrastructureBadge.
+ */
+export const INFRASTRUCTURE_BADGE_TOKENS = Object.freeze({
+  neutral: Object.freeze({
+    light: Object.freeze({
+      text: 'rgb(55, 65, 81)',
+      background: 'rgba(17, 24, 39, 0.06)',
+    }),
+    dark: Object.freeze({
+      text: 'rgba(255, 255, 255, 0.8)',
+      background: 'rgba(255, 255, 255, 0.08)',
+    }),
+  }),
+  layerBrightnessAdjust: Object.freeze({
+    ciclovia: -0.22,
+    calçada: 0,
+    ciclofaixa: 0.4,
+    ciclorrota: 0.7,
+    rua: 0.6,
+  }),
+});
 
 /** For JS consumers that need map paint colors (Map.js). */
 export const MAP_COLORS = {
@@ -140,6 +178,8 @@ export function getCssCustomProperties() {
     '--color-loader-4': colors.loader4,
     '--color-logo-dark': colors.logoDark,
     '--color-logo-light': colors.logoLight,
+    '--color-favorite-accent': colors.favoriteAccent,
+    '--color-favorite-accent-dark': colors.favoriteAccentDark,
     /* Legacy names used by loader keyframes */
     '--color1': colors.loader1,
     '--color2': colors.loader2,

@@ -5,8 +5,6 @@ import mapboxgl from 'mapbox-gl';
 import turfBbox from '@turf/bbox';
 import turfCircle from '@turf/circle';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
-import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import { PmTilesSource } from 'mapbox-pmtiles';
 
 import {
@@ -16,9 +14,6 @@ import {
   INTERACTIVE_LAYERS_ZOOM_THRESHOLD,
   ENABLE_COMMENTS,
   IS_MOBILE,
-  IS_PROD,
-  MAPBOX_GEOCODER_COUNTRIES,
-  SUPPORTED_COUNTRIES,
   DEFAULT_LINE_WIDTH_MULTIPLIER,
   COMMENTS_ZOOM_THRESHOLD,
   MAP_AUTOCHANGE_AREA_ZOOM_THRESHOLD,
@@ -30,7 +25,10 @@ import {
   ROUTE_LINE_BORDER_WIDTH,
   ROUTE_LINE_BORDER_OPACITY,
   ROUTE_LINE_PADDING_WIDTH,
-  NEAR_DESTINATION_POI_RADIUS_KM,
+  ROUTE_UNSELECTED_LIGHT_BORDER_WIDTH,
+  ROUTE_UNSELECTED_LIGHT_BORDER_OPACITY,
+  NEAR_ROUTE_ENDPOINT_POI_RADIUS_KM,
+  ROUTE_ENDPOINT_VISIBLE_POI_ICONS,
   PMTILES_FILENAME,
   LOW_ZOOM_WIDTH_DIVISOR,
   ROUTES_ACTIVE_LOW_ZOOM_WIDTH_DIVISOR,
@@ -43,11 +41,12 @@ import AirtableDatabase from './AirtableDatabase.js';
 import CommentModal from './CommentModal.js';
 import NewCommentCursor from './NewCommentCursor.js';
 import MapPopups from './MapPopups.js';
+import { readFavorites, removeFavorite, toggleFavorite } from './favoritesStore';
 import { adjustColorBrightness, slugify } from './utils/utils.js';
 import debounce from 'lodash.debounce';
 import { getCurrentSunPosition } from './sunPositionUtils';
 import { arrowIconsByLayer, arrowIcons, arrowSdf, iconsMap } from './features/map/icons';
-import { reverseGeocodePlace } from './features/map/geocoding.js';
+import { reverseGeocodePlace } from './features/map/mapboxGeocoding.js';
 
 import './Map.css';
 
@@ -83,6 +82,23 @@ export function flyMapToCityFocus(map, centerLngLat, placeName) {
     minZoom: 6,
   });
 }
+
+/** GeoJSON source holding endpoint circles used alongside route-mode POI `within` filters */
+const ROUTE_ENDPOINT_POI_ZONES_SOURCE_ID = 'route-endpoint-poi-zones';
+
+/** Geo sources for app data layers; basemap (e.g. composite) is everything else. */
+const CICLOMAPA_DATA_SOURCES = new Set([
+  'osmdata',
+  'pmtiles-source',
+  'commentsSrc',
+  'favoritesSrc',
+  'route-selected',
+  'routes-unselected',
+  'overlapping-cyclepaths-selected',
+  'overlapping-cyclepaths-unselected',
+  'boundaryLineSrc',
+  ROUTE_ENDPOINT_POI_ZONES_SOURCE_ID,
+]);
 
 const isE2E =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('e2e');
@@ -128,9 +144,11 @@ function generateLampSprite(theme) {
   return ctx.getImageData(0, 0, size, size);
 }
 
+/** Built-in `Map`; the React component class name `Map` shadows `window.Map` inside methods. */
+const JsMap = window.Map;
+
 class Map extends Component {
   map;
-  searchBar;
   popups;
 
   selectedCycleway;
@@ -142,9 +160,12 @@ class Map extends Component {
   comments;
   debouncedMapStateSync;
   lastGeocodedPlaceName;
-  originalPOIFilters; // Store original POI filters to restore when routes are cleared
+  originalRouteEndpointPoiFilters; // POI layer filters before route-mode `within` is applied; restored when routes clear
   geolocateControl; // Reference to Mapbox GeolocateControl
   resizeObserver;
+
+  /** Basemap symbol layers with text: id → visibility from the loaded style (`none` or `visible`). Reset when the style changes. */
+  basemapTextLayerDefaultVisibility;
 
   constructor(props) {
     super(props);
@@ -157,7 +178,10 @@ class Map extends Component {
     this.afterCommentCreate = this.afterCommentCreate.bind(this);
     this.showCommentModal = this.showCommentModal.bind(this);
     this.hideCommentModal = this.hideCommentModal.bind(this);
+    this.openCommentAtCoordinates = this.openCommentAtCoordinates.bind(this);
+    this._onSearchResultPopupClosed = this._onSearchResultPopupClosed.bind(this);
     document.addEventListener('newComment', this.newComment);
+    document.addEventListener('ciclomapa-comment-at', this.openCommentAtCoordinates);
 
     if (ENABLE_COMMENTS) {
       this.airtableDatabase = new AirtableDatabase();
@@ -173,12 +197,31 @@ class Map extends Component {
     // Track geojson feature IDs to hide from pmtiles layers
     this.geojsonFeatureIds = new Set();
 
-    // Create debounced map state sync function (only syncs if place name has been consistent for 3+ seconds)
-    this.debouncedMapStateSync = debounce((placeName) => {
+    // Create debounced map state sync function (only syncs if place name has been consistent for 1+ second).
+    // geocodeRequestTime is the timestamp of the reverseGeocode call that produced the placeName;
+    // it is forwarded to App.onMapMoved so that stale-geocode detection can compare against the
+    // navigation timestamp rather than the (later) resolution timestamp.
+    this.debouncedMapStateSync = debounce((placeName, geocodeRequestTime) => {
       console.debug('Syncing map state with consistent place:', placeName);
-      this.syncMapState(placeName);
+      this.syncMapState(placeName, geocodeRequestTime);
       document.querySelector('.city-picker span').setAttribute('style', 'opacity: 1');
     }, 1000);
+  }
+
+  _onSearchResultPopupClosed() {
+    this.props.onGlobalSearchPinDismiss?.();
+  }
+
+  openCommentAtCoordinates(e) {
+    if (!ENABLE_COMMENTS) return;
+    const d = e && e.detail;
+    if (!d || typeof d.lng !== 'number' || typeof d.lat !== 'number') return;
+    this.newCommentCoords = { lng: d.lng, lat: d.lat };
+    if (this.popups) {
+      this.popups.searchResultPopup.off('close', this._onSearchResultPopupClosed);
+      this.popups.closeAllPopups();
+    }
+    this.showCommentModal();
   }
 
   showCommentModal() {
@@ -202,17 +245,10 @@ class Map extends Component {
   }
 
   reverseGeocode(lngLat) {
-    return reverseGeocodePlace(lngLat)
-      .then((result) => {
-        if (this.searchBar && result.bbox) {
-          this.searchBar.setBbox(result.bbox);
-        }
-        return result;
-      })
-      .catch((err) => {
-        console.error('Reverse geocoding failed:', err);
-        throw err;
-      });
+    return reverseGeocodePlace(lngLat).catch((err) => {
+      console.error('Reverse geocoding failed:', err);
+      throw err;
+    });
   }
 
   onMapMoveEnded() {
@@ -220,6 +256,9 @@ class Map extends Component {
 
     if (this.map.getZoom() > MAP_AUTOCHANGE_AREA_ZOOM_THRESHOLD) {
       const center = this.map.getCenter();
+      // Capture when this geocode request was initiated so App can distinguish stale
+      // (pre-navigation) results from fresh (post-navigation) ones.
+      const geocodeRequestTime = Date.now();
       this.reverseGeocode([center.lng, center.lat])
         .then((result) => {
           const currentPlaceName = result.place_name;
@@ -243,7 +282,7 @@ class Map extends Component {
               // Different place - cancel previous debounced call and start new timer
               this.debouncedMapStateSync.cancel();
               this.lastGeocodedPlaceName = currentPlaceName;
-              this.debouncedMapStateSync(currentPlaceName);
+              this.debouncedMapStateSync(currentPlaceName, geocodeRequestTime);
             }
           }
         })
@@ -256,7 +295,7 @@ class Map extends Component {
     }
   }
 
-  syncMapState(newArea) {
+  syncMapState(newArea, geocodeRequestTime) {
     const center = this.map.getCenter();
     const ret = {
       lat: center.lat,
@@ -266,6 +305,10 @@ class Map extends Component {
 
     if (newArea) {
       ret.area = newArea;
+      // Forward the request timestamp so App.onMapMoved can detect stale results.
+      if (geocodeRequestTime != null) {
+        ret._geocodeRequestTime = geocodeRequestTime;
+      }
     }
 
     this.props.onMapMoved(ret);
@@ -458,6 +501,48 @@ class Map extends Component {
         : '';
   }
 
+  /**
+   * Clean mode: hide map-supplied symbol layers that render text (streets, places, POIs, etc.), not CicloMapa data.
+   * When clean mode is off, restore each layer’s original visibility from the style.
+   */
+  applyCleanModeBasemapLabels() {
+    const map = this.map;
+    if (!map?.getStyle) return;
+    const style = map.getStyle();
+    const styleLayers = style?.layers;
+    if (!styleLayers) return;
+
+    if (!this.basemapTextLayerDefaultVisibility) {
+      const defaults = new JsMap();
+      for (const layer of styleLayers) {
+        if (layer.type !== 'symbol') continue;
+        if (CICLOMAPA_DATA_SOURCES.has(layer.source)) continue;
+        const textField = layer.layout && layer.layout['text-field'];
+        if (textField === undefined || textField === '' || textField === false) continue;
+        const v = layer.layout && layer.layout.visibility;
+        defaults.set(layer.id, v === 'none' ? 'none' : 'visible');
+      }
+      this.basemapTextLayerDefaultVisibility = defaults;
+    }
+
+    const hide = Boolean(this.props.cleanMode);
+    for (const layer of styleLayers) {
+      if (layer.type !== 'symbol') continue;
+      if (CICLOMAPA_DATA_SOURCES.has(layer.source)) continue;
+      const textField = layer.layout && layer.layout['text-field'];
+      if (textField === undefined || textField === '' || textField === false) continue;
+      if (!map.getLayer(layer.id)) continue;
+      const target = hide
+        ? 'none'
+        : (this.basemapTextLayerDefaultVisibility.get(layer.id) ?? 'visible');
+      try {
+        map.setLayoutProperty(layer.id, 'visibility', target);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   initPOILayerForSource(l, sourceId) {
     const filters = this.convertFilterToMapboxFilter(l, sourceId);
 
@@ -544,6 +629,8 @@ class Map extends Component {
         'icon-image': this.props.isDarkMode ? `${l.icon}` : `${l.icon}--light`,
       },
       paint: {
+        'icon-occlusion-opacity': 1,
+        'text-occlusion-opacity': 1,
         'text-color': l.style.textColor || 'white',
         'text-halo-width': 1,
         'text-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.7, 1.0],
@@ -1154,6 +1241,7 @@ class Map extends Component {
         'icon-padding': 4,
       };
       const arrowPaint = {
+        'icon-occlusion-opacity': 1,
         ...(useSdf && {
           'icon-color': adjustColorBrightness(
             l.style.lineColor,
@@ -1478,6 +1566,7 @@ class Map extends Component {
           source: 'commentsSrc',
           minzoom: MAP_AUTOCHANGE_AREA_ZOOM_THRESHOLD,
           layout: {
+            visibility: this.props.cleanMode ? 'none' : 'visible',
             'icon-image': this.props.isDarkMode ? 'commentIcon' : 'commentIcon--light',
             'icon-size': [
               'interpolate',
@@ -1491,6 +1580,7 @@ class Map extends Component {
             'icon-allow-overlap': ['step', ['zoom'], false, COMMENTS_ZOOM_THRESHOLD, true],
           },
           paint: {
+            'icon-occlusion-opacity': 1,
             'icon-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.8, 1],
           },
         });
@@ -1498,9 +1588,9 @@ class Map extends Component {
         // Interactions
 
         this.map.on('mouseenter', 'comentarios', (e) => {
-          if (e.target.getZoom() < INTERACTIVE_LAYERS_ZOOM_THRESHOLD) {
-            return;
-          }
+          // if (e.target.getZoom() < INTERACTIVE_LAYERS_ZOOM_THRESHOLD) {
+          //   return;
+          // }
           if (e.features.length > 0) {
             // Disable comment hover effects when in route mode
             if (self.props.isInRouteMode) {
@@ -1545,9 +1635,9 @@ class Map extends Component {
         });
 
         this.map.on('click', 'comentarios', (e) => {
-          if (e.target.getZoom() < INTERACTIVE_LAYERS_ZOOM_THRESHOLD) {
-            return;
-          }
+          // if (e.target.getZoom() < INTERACTIVE_LAYERS_ZOOM_THRESHOLD) {
+          //   return;
+          // }
           if (e && e.features && e.features.length > 0 && !e.originalEvent.defaultPrevented) {
             // Disable comment clicks when in route mode
             if (self.props.isInRouteMode) {
@@ -1559,6 +1649,9 @@ class Map extends Component {
             e.originalEvent.preventDefault();
           }
         });
+
+        self.updateLayerVisibility();
+        self.applyCleanModeBasemapLabels();
       }
     });
   }
@@ -1648,6 +1741,13 @@ class Map extends Component {
         });
       }
 
+      if (!map.getSource('favoritesSrc')) {
+        map.addSource('favoritesSrc', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        });
+      }
+
       // layers.json is ordered from most to least important, but we
       //   want the most important ones to be on top so we add in reverse.
       // Slice is used here to don't destructively reverse the original array.
@@ -1697,6 +1797,8 @@ class Map extends Component {
     const suffix = layerType === 'top' ? '-selected' : 's-unselected';
 
     const layerUnderneathName = this.getLayerUnderneathName(map);
+    const isUnselected = layerType !== 'top';
+    const isLightMode = !this.props.isDarkMode;
 
     // 1. Padding layer
     map.addLayer(
@@ -1771,8 +1873,16 @@ class Map extends Component {
           //         this.props.isDarkMode ? '#ffffff' : '#1a1a1a', // On hover
           //         this.props.isDarkMode ? '#ffffff' : '#000000', // Default
           // ],
-          'line-width': ROUTE_LINE_BORDER_WIDTH,
-          'line-opacity': ROUTE_LINE_BORDER_OPACITY,
+          // Improve contrast for unselected alternative routes on the light basemap:
+          // enable a visible outline only for the unselected layer in light mode.
+          'line-width':
+            isUnselected && isLightMode
+              ? ROUTE_UNSELECTED_LIGHT_BORDER_WIDTH
+              : ROUTE_LINE_BORDER_WIDTH,
+          'line-opacity':
+            isUnselected && isLightMode
+              ? ROUTE_UNSELECTED_LIGHT_BORDER_OPACITY
+              : ROUTE_LINE_BORDER_OPACITY,
           'line-gap-width': ROUTE_LINE_GAP_WIDTH,
         },
         filter: ['==', '$type', 'LineString'],
@@ -2016,7 +2126,7 @@ class Map extends Component {
       }
 
       // Reset stored filters when data changes
-      this.originalPOIFilters = null;
+      this.originalRouteEndpointPoiFilters = null;
 
       this.hideGeoJsonFromPmtiles(this.props.data);
 
@@ -2029,7 +2139,11 @@ class Map extends Component {
 
     if (this.props.style !== prevProps.style) {
       console.debug('new style', this.props.style);
+      this.basemapTextLayerDefaultVisibility = null;
       map.setStyle(this.props.style);
+      map.once('style.load', () => {
+        this.applyCleanModeBasemapLabels();
+      });
     }
 
     // Velokarte: with Mapbox Standard, theme toggles via lightPreset config
@@ -2088,10 +2202,13 @@ class Map extends Component {
     });
 
     const routesChanged = this.props.routes !== prevProps.routes;
-    const routesOrDestChanged = routesChanged || this.props.toPoint !== prevProps.toPoint;
+    const routesOrEndpointsChanged =
+      routesChanged ||
+      this.props.toPoint !== prevProps.toPoint ||
+      this.props.fromPoint !== prevProps.fromPoint;
 
-    // Single pass: layer toggles, route mode, and destination all affect visibility.
-    if (layersChanged || routesOrDestChanged) {
+    // Single pass: layer toggles, route mode, and from/to endpoints all affect visibility.
+    if (layersChanged || routesOrEndpointsChanged) {
       if (layersChanged) {
         console.debug('Layer visibility changed, updating...');
       }
@@ -2115,6 +2232,77 @@ class Map extends Component {
     if (hoveredRouteChanged || routesChanged) {
       this.updateHoveredRoute(this.props.hoveredRouteIndex);
     }
+
+    if (this.props.globalSearchPin !== prevProps.globalSearchPin) {
+      this.applyGlobalSearchPin(this.props.globalSearchPin);
+    }
+
+    if (this.props.favorites !== prevProps.favorites) {
+      this.applyFavoriteMarkers(this.props.favorites);
+    }
+
+    if (this.props.cleanMode !== prevProps.cleanMode) {
+      this.applyCleanModeBasemapLabels();
+      this.updateLayerVisibility();
+    }
+  }
+
+  applyGlobalSearchPin(pin) {
+    if (!this.map || !this.popups) return;
+
+    if (this.globalSearchMarker) {
+      this.globalSearchMarker.remove();
+      this.globalSearchMarker = null;
+    }
+
+    this.popups.searchResultPopup.off('close', this._onSearchResultPopupClosed);
+    this.popups.hideSearchResultPopup();
+
+    if (!pin || !Number.isFinite(pin.lng) || !Number.isFinite(pin.lat)) return;
+
+    const el = document.createElement('div');
+    el.className = 'global-search-marker';
+    el.setAttribute('aria-hidden', 'true');
+
+    this.globalSearchMarker = new mapboxgl.Marker({ element: el, draggable: false })
+      .setLngLat([pin.lng, pin.lat])
+      .addTo(this.map);
+
+    this.popups.showSearchResultPopup({
+      lng: pin.lng,
+      lat: pin.lat,
+      title: pin.title,
+      address: pin.address,
+      placeTypes: pin.placeTypes,
+      placeId: pin.placeId,
+      areaContext: pin.areaContext,
+    });
+    this.popups.searchResultPopup.on('close', this._onSearchResultPopupClosed);
+  }
+
+  applyFavoriteMarkers(favorites) {
+    if (!this.map) return;
+
+    const source = this.map.getSource('favoritesSrc');
+    if (!source) return;
+
+    const features = (favorites || [])
+      .filter((f) => Number.isFinite(f.lng) && Number.isFinite(f.lat))
+      .map((f, i) => ({
+        type: 'Feature',
+        id: i,
+        geometry: { type: 'Point', coordinates: [f.lng, f.lat] },
+        properties: {
+          title: f.title || '',
+          subtitle: f.subtitle || '',
+          placeTypes: JSON.stringify(f.placeTypes || []),
+          favoriteId: f.id || '',
+          areaContext: f.areaContext || '',
+          placeId: f.placeId || '',
+        },
+      }));
+
+    source.setData({ type: 'FeatureCollection', features });
   }
 
   updateRoutesLayer(routes) {
@@ -2151,7 +2339,7 @@ class Map extends Component {
 
       if (routes.bbox) {
         const padding = IS_MOBILE
-          ? { top: 250, bottom: 50, left: 50, right: 50 }
+          ? { top: 32, bottom: 250, left: 32, right: 32 }
           : { top: 100, bottom: 100, left: 500, right: 100 };
         map.fitBounds(routes.bbox, { padding: padding, duration: 2000 });
       }
@@ -2504,42 +2692,51 @@ class Map extends Component {
   }
 
   /**
-   * Filter POIs visible during route planning (only show bike parking and rental stations near destination)
-   * Uses Mapbox's native 'within' filter with a circle geometry
+   * During route mode, restrict certain POI layers to features within a radius of each route endpoint
+   * (Mapbox `within` on circle geometries around from / to).
    */
-  updateNearDestinationPOIs(hasRoutes, destinationCoords, source) {
+  updateRouteEndpointPoiFilters(hasRoutes, fromCoords, toCoords) {
     const map = this.map;
     if (!map) return;
 
-    const nearDestinationPOIs = ['poi-rental', 'poi-bikeparking'];
-    const CIRCLE_SOURCE_ID = 'destination-filter-circle';
+    if (hasRoutes && (fromCoords || toCoords)) {
+      const fromCircle = fromCoords
+        ? turfCircle(fromCoords, NEAR_ROUTE_ENDPOINT_POI_RADIUS_KM, {
+            units: 'kilometers',
+          })
+        : null;
+      const toCircle = toCoords
+        ? turfCircle(toCoords, NEAR_ROUTE_ENDPOINT_POI_RADIUS_KM, {
+            units: 'kilometers',
+          })
+        : null;
 
-    if (hasRoutes && destinationCoords) {
-      // Create circle geometry around destination
-      const circle = turfCircle(destinationCoords, NEAR_DESTINATION_POI_RADIUS_KM, {
-        units: 'kilometers',
-      });
+      const spatialFilter =
+        fromCircle && toCircle
+          ? ['any', ['within', fromCircle.geometry], ['within', toCircle.geometry]]
+          : ['within', (fromCircle || toCircle).geometry];
 
-      // Create or update temporary circle source
-      if (!map.getSource(CIRCLE_SOURCE_ID)) {
-        map.addSource(CIRCLE_SOURCE_ID, {
+      const zonesGeoJson =
+        fromCircle && toCircle
+          ? { type: 'FeatureCollection', features: [fromCircle, toCircle] }
+          : fromCircle || toCircle;
+
+      if (!map.getSource(ROUTE_ENDPOINT_POI_ZONES_SOURCE_ID)) {
+        map.addSource(ROUTE_ENDPOINT_POI_ZONES_SOURCE_ID, {
           type: 'geojson',
-          data: circle,
+          data: zonesGeoJson,
         });
       } else {
-        map.getSource(CIRCLE_SOURCE_ID).setData(circle);
+        map.getSource(ROUTE_ENDPOINT_POI_ZONES_SOURCE_ID).setData(zonesGeoJson);
       }
 
-      // Get POI layers that should remain visible during routes
-      const nearDestinationPOILayers = this.props.layers.filter(
-        (l) => l.type === 'poi' && nearDestinationPOIs.includes(l.icon)
+      const routeEndpointPoiLayers = this.props.layers.filter(
+        (l) => l.type === 'poi' && ROUTE_ENDPOINT_VISIBLE_POI_ICONS.includes(l.icon)
       );
 
-      // Apply within filter to near-destination POI layers
-      nearDestinationPOILayers.forEach((layer) => {
+      routeEndpointPoiLayers.forEach((layer) => {
         const originalFilter = this.convertFilterToMapboxFilter(layer, 'osmdata');
-        // Combine original filter with within filter
-        const withinFilter = ['all', originalFilter, ['within', circle.geometry]];
+        const endpointWithinFilter = ['all', originalFilter, spatialFilter];
 
         // Only apply to GeoJSON source layers (not PMTiles)
         const layerId = layer.id;
@@ -2547,17 +2744,17 @@ class Map extends Component {
         const polygonLayerId = layerId + 'polygon';
 
         // Store original filter if not already stored
-        if (!this.originalPOIFilters) {
-          this.originalPOIFilters = {};
+        if (!this.originalRouteEndpointPoiFilters) {
+          this.originalRouteEndpointPoiFilters = {};
         }
-        if (!this.originalPOIFilters[circlesLayerId]) {
-          this.originalPOIFilters[circlesLayerId] = originalFilter;
+        if (!this.originalRouteEndpointPoiFilters[circlesLayerId]) {
+          this.originalRouteEndpointPoiFilters[circlesLayerId] = originalFilter;
         }
-        if (!this.originalPOIFilters[layerId]) {
-          this.originalPOIFilters[layerId] = originalFilter;
+        if (!this.originalRouteEndpointPoiFilters[layerId]) {
+          this.originalRouteEndpointPoiFilters[layerId] = originalFilter;
         }
-        if (!this.originalPOIFilters[polygonLayerId]) {
-          this.originalPOIFilters[polygonLayerId] = originalFilter;
+        if (!this.originalRouteEndpointPoiFilters[polygonLayerId]) {
+          this.originalRouteEndpointPoiFilters[polygonLayerId] = originalFilter;
         }
 
         // Apply within filter to all three layer types (circles, symbols, polygons)
@@ -2565,7 +2762,7 @@ class Map extends Component {
         [circlesLayerId, layerId, polygonLayerId].forEach((id) => {
           if (map.getLayer(id)) {
             try {
-              map.setFilter(id, withinFilter);
+              map.setFilter(id, endpointWithinFilter);
             } catch (e) {
               console.warn('Error setting within filter for', id, e);
             }
@@ -2574,21 +2771,21 @@ class Map extends Component {
       });
     } else {
       // Remove within filter and restore original filters when routes are cleared
-      if (this.originalPOIFilters) {
-        const nearDestinationPOILayers = this.props.layers.filter(
-          (l) => l.type === 'poi' && nearDestinationPOIs.includes(l.icon)
+      if (this.originalRouteEndpointPoiFilters) {
+        const routeEndpointPoiLayers = this.props.layers.filter(
+          (l) => l.type === 'poi' && ROUTE_ENDPOINT_VISIBLE_POI_ICONS.includes(l.icon)
         );
 
-        nearDestinationPOILayers.forEach((layer) => {
+        routeEndpointPoiLayers.forEach((layer) => {
           // Only restore GeoJSON source layers (not PMTiles)
           const layerId = layer.id;
           const circlesLayerId = layerId + 'circles';
           const polygonLayerId = layerId + 'polygon';
 
           [circlesLayerId, layerId, polygonLayerId].forEach((id) => {
-            if (map.getLayer(id) && this.originalPOIFilters[id]) {
+            if (map.getLayer(id) && this.originalRouteEndpointPoiFilters[id]) {
               try {
-                map.setFilter(id, this.originalPOIFilters[id]);
+                map.setFilter(id, this.originalRouteEndpointPoiFilters[id]);
               } catch (e) {
                 console.warn('Error restoring filter for', id, e);
               }
@@ -2596,12 +2793,11 @@ class Map extends Component {
           });
         });
 
-        this.originalPOIFilters = null;
+        this.originalRouteEndpointPoiFilters = null;
       }
 
-      // Remove circle source when routes are cleared
-      if (map.getSource(CIRCLE_SOURCE_ID)) {
-        map.removeSource(CIRCLE_SOURCE_ID);
+      if (map.getSource(ROUTE_ENDPOINT_POI_ZONES_SOURCE_ID)) {
+        map.removeSource(ROUTE_ENDPOINT_POI_ZONES_SOURCE_ID);
       }
     }
   }
@@ -2611,11 +2807,10 @@ class Map extends Component {
     if (!map) return;
 
     const hasRoutes = this.props.routes?.routes?.length > 0;
-    const nearDestinationPOIs = ['poi-rental', 'poi-bikeparking']; // POI types visible during routes
-    const destinationCoords = this.props.toPoint?.result?.center;
+    const fromCoords = this.props.fromPoint?.result?.center;
+    const toCoords = this.props.toPoint?.result?.center;
 
-    // Apply within filter for near-destination POIs when routes are active
-    this.updateNearDestinationPOIs(hasRoutes, destinationCoords, null);
+    this.updateRouteEndpointPoiFilters(hasRoutes, fromCoords, toCoords);
 
     // Update layer visibility
     this.props.layers.forEach((layer) => {
@@ -2659,12 +2854,12 @@ class Map extends Component {
           });
         });
       } else if (layer.type === 'poi') {
-        const isNearDestinationPOI = nearDestinationPOIs.includes(layer.icon);
+        const isRouteEndpointPoiIcon = ROUTE_ENDPOINT_VISIBLE_POI_ICONS.includes(layer.icon);
         const status = !hasRoutes
           ? layer.isActive
             ? 'visible'
             : 'none'
-          : isNearDestinationPOI && destinationCoords && layer.isActive
+          : isRouteEndpointPoiIcon && (fromCoords || toCoords) && layer.isActive
             ? 'visible'
             : 'none';
 
@@ -2683,7 +2878,8 @@ class Map extends Component {
     });
 
     if (map.getLayer('comentarios')) {
-      map.setLayoutProperty('comentarios', 'visibility', hasRoutes ? 'none' : 'visible');
+      const showComments = !hasRoutes && !this.props.cleanMode;
+      map.setLayoutProperty('comentarios', 'visibility', showComments ? 'visible' : 'none');
     }
   }
 
@@ -2757,6 +2953,7 @@ class Map extends Component {
       this.map = new mapboxgl.Map({
         container: this.mapContainer,
         style: this.props.style,
+        // projection: 'globe',
         preserveDrawingBuffer: true,
         config: {
           basemap: {
@@ -2816,6 +3013,68 @@ class Map extends Component {
       }
     };
 
+    window.toggleFavoriteFromPopup = (btn) => {
+      if (!btn || !btn.dataset) return;
+      const lng = Number(btn.dataset.favLng);
+      const lat = Number(btn.dataset.favLat);
+      const title = btn.dataset.favTitle != null ? String(btn.dataset.favTitle) : '';
+      const favoriteId = btn.dataset.favId ? String(btn.dataset.favId) : undefined;
+
+      let subtitle = '';
+      let placeTypes;
+      let placeId;
+      let areaContext;
+      if (btn.hasAttribute('data-fav-place-types')) {
+        try {
+          placeTypes = JSON.parse(btn.dataset.favPlaceTypes || '[]');
+        } catch {
+          placeTypes = undefined;
+        }
+        subtitle = btn.dataset.favSubtitle != null ? String(btn.dataset.favSubtitle) : '';
+        if (btn.dataset.favPlaceId) placeId = String(btn.dataset.favPlaceId);
+        if (btn.dataset.favAreaContext) areaContext = String(btn.dataset.favAreaContext);
+      }
+
+      let next;
+      let added;
+      if (favoriteId && readFavorites().some((f) => f.id === favoriteId)) {
+        next = removeFavorite(favoriteId);
+        added = false;
+      } else {
+        const r = toggleFavorite({
+          lng,
+          lat,
+          title: title || '',
+          subtitle,
+          placeTypes,
+          placeId,
+          areaContext,
+        });
+        next = r.favorites;
+        added = r.added;
+      }
+      if (this.props.onFavoritesChanged) {
+        this.props.onFavoritesChanged(next);
+      }
+      this.applyFavoriteMarkers(next);
+
+      const iconEl = btn.querySelector('.popup-fav-btn__icon');
+      const labelEl = btn.querySelector('.popup-fav-btn__label');
+      if (added) {
+        btn.classList.add('popup-fav-btn--active');
+        if (iconEl)
+          iconEl.innerHTML =
+            '<svg fill="currentColor" stroke="currentColor" stroke-width="0" viewBox="0 0 24 24" class="react-icon mb-0.5 mr-1" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17l-.022.012-.007.004-.002.001h-.002L12 21.12l-1.645-.211z" clip-rule="evenodd"/></svg>';
+        if (labelEl) labelEl.textContent = 'Favoritado';
+      } else {
+        btn.classList.remove('popup-fav-btn--active');
+        if (iconEl)
+          iconEl.innerHTML =
+            '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="react-icon mb-0.5 mr-1" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/></svg>';
+        if (labelEl) labelEl.textContent = 'Favoritar';
+      }
+    };
+
     this.loadImages();
 
     // Initialize map after style is loaded
@@ -2840,116 +3099,6 @@ class Map extends Component {
 
   initMapControls() {
     if (!this.props.embedMode) {
-      // if (!IS_MOBILE) {
-      //     this.searchBar = new MapboxGeocoder({
-      //         accessToken: mapboxgl.accessToken,
-      //         mapboxgl: mapboxgl,
-      //         language: 'pt-br',
-      //         placeholder: 'Buscar endereços, estabelecimentos, ...',
-      //         countries: IS_PROD ? 'br' : '',
-      //         collapsed: true
-      //     });
-      //     this.map.addControl(this.searchBar, 'bottom-right');
-      // }
-
-      const cityPickerLabelsPt = SUPPORTED_COUNTRIES.map((c) => c.labelPt);
-      const cityPickerPlaceholderSuffixPtProd =
-        cityPickerLabelsPt.length === 0
-          ? 'no mundo'
-          : cityPickerLabelsPt.length === 1
-            ? `em ${cityPickerLabelsPt[0]}`
-            : `em ${cityPickerLabelsPt.slice(0, -1).join(', ')} e ${
-                cityPickerLabelsPt[cityPickerLabelsPt.length - 1]
-              }`;
-
-      // Velokarte: MapboxGeocoder hits Mapbox's API which we don't have a token
-      // for. Constructor + onAdd both throw "Invalid token" and that breaks the
-      // rest of init. Wrap the whole picker setup in try/catch until we replace
-      // it with a Nominatim-backed MapLibre geocoder.
-      let cityPicker;
-      try {
-        cityPicker = new MapboxGeocoder({
-        accessToken: mapboxgl.accessToken,
-        mapboxgl: mapboxgl,
-        language: 'pt-br',
-        placeholder: `Buscar cidades ${IS_PROD ? cityPickerPlaceholderSuffixPtProd : 'no mundo'}`,
-        countries: IS_PROD ? MAPBOX_GEOCODER_COUNTRIES : '',
-        types: 'place',
-        marker: false,
-        clearOnBlur: true,
-        flyTo: false,
-      });
-      cityPicker.on('result', (result) => {
-        console.debug('geocoder result', result);
-
-        const resultCenter = result?.result?.center;
-        const resultLabel = result?.result?.place_name;
-        const placeNameForFocus = resultLabel ?? result?.place_name;
-
-        if (Array.isArray(resultCenter) && resultCenter.length === 2) {
-          flyMapToCityFocus(this.map, resultCenter, placeNameForFocus);
-        }
-
-        // Keep city source of truth from picker selection instead of a follow-up reverse geocode.
-        this.syncMapState(resultLabel || this.props.location);
-
-        // Hide UI
-        // @todo refactor this to use React state
-        document.querySelector('body').classList.remove('show-city-picker');
-        cityPicker.clear();
-      });
-
-      // Doesn't matter where we add this, it's customized via CSS
-      this.map.addControl(cityPicker, 'top-left');
-
-      // Move the Geocoder DOM into the React modal, so the input feels native.
-      // (We keep Mapbox's JS integration for search + results; camera uses flyMapToCityFocus.)
-      const relocateCityPickerToModal = (attempt = 0) => {
-        if (attempt > 20) return;
-
-        const modalMount = document.querySelector('.city-switcher-modal__geocoderMount');
-        const geocoderEl =
-          cityPicker?._container ||
-          document.querySelector('.mapboxgl-ctrl-top-left .mapboxgl-ctrl-geocoder');
-
-        if (!modalMount || !geocoderEl) {
-          setTimeout(() => relocateCityPickerToModal(attempt + 1), 100);
-          return;
-        }
-
-        if (geocoderEl.parentElement !== modalMount) {
-          modalMount.appendChild(geocoderEl);
-        }
-
-        // Ensure the moved element isn't affected by any map-based positioning rules.
-        geocoderEl.style.position = 'relative';
-
-        const focusCityPickerIfOpen = () => {
-          if (!document.body.classList.contains('show-city-picker')) return;
-          const input = modalMount.querySelector('input');
-          if (!input || typeof input.focus !== 'function') return;
-          try {
-            input.focus({ preventScroll: true });
-          } catch {
-            input.focus();
-          }
-        };
-
-        focusCityPickerIfOpen();
-        requestAnimationFrame(focusCityPickerIfOpen);
-        window.setTimeout(focusCityPickerIfOpen, 0);
-      };
-
-      relocateCityPickerToModal();
-      } catch (err) {
-        console.warn(
-          '[Velokarte] MapboxGeocoder unavailable (no Mapbox token); skipping city picker. ' +
-            'TODO: replace with maplibre-gl-geocoder + Nominatim adapter.',
-          err
-        );
-        cityPicker = null;
-      }
-
       const geolocate = new mapboxgl.GeolocateControl({
         positionOptions: {
           enableHighAccuracy: true,
@@ -3124,6 +3273,9 @@ class Map extends Component {
     this.initMapControls();
     this.setRealisticLighting();
     this.updateBoundaryMask();
+    if (this.props.globalSearchPin) {
+      this.applyGlobalSearchPin(this.props.globalSearchPin);
+    }
   }
 
   loadImages() {
@@ -3164,6 +3316,74 @@ class Map extends Component {
     });
   }
 
+  initFavoritesLayer() {
+    const map = this.map;
+    if (!map || !map.getSource('favoritesSrc')) return;
+
+    if (!map.getLayer('favorites')) {
+      map.addLayer({
+        id: 'favorites',
+        type: 'symbol',
+        source: 'favoritesSrc',
+        layout: {
+          'icon-image': this.props.isDarkMode ? 'poi-favorite' : 'poi-favorite--light',
+          'icon-size': 0.5,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+        paint: {
+          'icon-occlusion-opacity': 1,
+          'icon-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.85, 1],
+        },
+      });
+
+      const self = this;
+
+      map.on('mouseenter', 'favorites', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+
+      map.on('mouseleave', 'favorites', () => {
+        map.getCanvas().style.cursor = '';
+      });
+
+      map.on('click', 'favorites', (e) => {
+        if (!e.features || e.features.length === 0) return;
+        e.originalEvent.preventDefault();
+        const f = e.features[0];
+        const [lng, lat] = f.geometry.coordinates;
+        let placeTypes = [];
+        try {
+          placeTypes = JSON.parse(f.properties.placeTypes || '[]');
+        } catch {}
+        const favId =
+          f.properties.favoriteId != null && f.properties.favoriteId !== ''
+            ? String(f.properties.favoriteId)
+            : undefined;
+        const favPlaceId =
+          f.properties.placeId != null && f.properties.placeId !== ''
+            ? String(f.properties.placeId)
+            : undefined;
+        const areaCtx =
+          f.properties.areaContext != null && f.properties.areaContext !== ''
+            ? String(f.properties.areaContext)
+            : undefined;
+        self.popups.showSearchResultPopup({
+          lng,
+          lat,
+          title: f.properties.title || '',
+          address: f.properties.subtitle || '',
+          placeTypes,
+          favoriteId: favId,
+          placeId: favPlaceId,
+          areaContext: areaCtx,
+        });
+      });
+    }
+
+    this.applyFavoriteMarkers(this.props.favorites);
+  }
+
   async initLayers() {
     // The order in which layers are initialized will define their paint order
     await this.initGeojsonLayers(this.props.layers);
@@ -3179,6 +3399,8 @@ class Map extends Component {
       this.initCommentsLayer();
     }
 
+    this.initFavoritesLayer();
+
     // Restore current routes if they exist
     if (this.props.routes) {
       this.updateRoutesLayer(this.props.routes);
@@ -3191,6 +3413,7 @@ class Map extends Component {
 
     // Initial way/POI visibility for route mode (updateRoutesLayer already set sources).
     this.updateLayerVisibility();
+    this.applyCleanModeBasemapLabels();
 
     this.map.on('moveend', this.debouncedOnMapMoveEnded);
   }
@@ -3209,6 +3432,19 @@ class Map extends Component {
       this.popups.clearRouteTooltips();
     }
     document.removeEventListener('newComment', this.newComment);
+    document.removeEventListener('ciclomapa-comment-at', this.openCommentAtCoordinates);
+
+    if (this.globalSearchMarker) {
+      try {
+        this.globalSearchMarker.remove();
+      } catch (e) {
+        /* ignore */
+      }
+      this.globalSearchMarker = null;
+    }
+    if (this.popups) {
+      this.popups.searchResultPopup?.off?.('close', this._onSearchResultPopupClosed);
+    }
 
     // Cancel any pending debounced calls
     if (this.debouncedOnMapMoveEnded) {
@@ -3264,7 +3500,19 @@ class Map extends Component {
     return (
       <>
         {/* Thanks https://blog.mapbox.com/mapbox-gl-js-react-764da6cc074a */}
-        <div data-testid="map-container" ref={(el) => (this.mapContainer = el)}></div>
+        <div
+          data-testid="map-container"
+          ref={(el) => (this.mapContainer = el)}
+          style={
+            isE2E
+              ? {
+                  width: '100%',
+                  height: 'var(--viewport-height, 100vh)',
+                  minHeight: 'var(--viewport-height, 100vh)',
+                }
+              : undefined
+          }
+        />
 
         {ENABLE_COMMENTS && this.state.showCommentCursor && (
           <NewCommentCursor isDarkMode={this.props.isDarkMode} />

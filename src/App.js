@@ -42,25 +42,45 @@ import {
   ENABLE_SATELLITE_TOGGLE,
   MAX_RECENT_CITIES,
 } from './config/constants.js';
-import { maybeAutoOpenWelcomeAboutModal, shouldAutoOpenWelcomeAboutModal } from './AboutModal.js';
+import {
+  maybeAutoOpenWelcomeAboutModal,
+  scheduleAfterFirstPaint,
+  shouldAutoOpenWelcomeAboutModal,
+  shouldDeferMapBootUntilAfterPaint,
+} from './AboutModal.js';
+import { readFavorites, toggleFavorite } from './favoritesStore';
+import { reverseGeocodePlace } from './features/map/mapboxGeocoding.js';
+import { API_TYPES, trackCall } from './dev/apiTracker.js';
 
 // v5+ no longer ships global type scale in the old Less bundle; this restores baseline
 // margins for raw h1–p etc. (and complements Tailwind preflight). See antd/dist/reset.css.
 import 'antd/dist/reset.css';
-import './styles/App.less';
 import './styles/theme-tailwind-overrides.css';
+import './styles/App.less';
 
 const RECENT_CITIES_STORAGE_KEY = 'ciclomapa_recent_cities_v1';
 
 class App extends Component {
   geoJson;
-  storage = new Storage();
+  _storage = null;
   osmController = OSMController;
   currentOSMRequest = null;
   deferredCityFocus = null;
+  // Fly-to target from the `?flyto=lat,lng[,zoom]` URL param; consumed when the map mounts.
+  pendingFlyToTarget = null;
   lastResolvedCitySlug = null;
   lastNotifiedCitySlugError = null;
   initialBareRootEntry = false;
+  _lastExplicitCityNavTimestamp = 0;
+  _welcomeMapBootScheduled = false;
+  _unmounted = false;
+
+  getStorage() {
+    if (!this._storage) {
+      this._storage = new Storage();
+    }
+    return this._storage;
+  }
 
   constructor(props) {
     super(props);
@@ -101,7 +121,9 @@ class App extends Component {
       !initialHasCitySlug;
 
     this.state = this.buildInitialState();
-    this.updateData();
+    if (this.state.mapBootReady) {
+      this.updateData();
+    }
   }
 
   buildInitialState() {
@@ -113,13 +135,32 @@ class App extends Component {
     const hasExplicitLatLng = this.hasExplicitViewportInURL();
     const shouldStartFromGlobeView = Boolean(citySlug) && !hasExplicitLatLng;
 
+    // Derive the initial area from the URL slug (for catalog cities) so that a page
+    // load/refresh always reflects the slug rather than potentially stale localStorage.
+    // For unknown cities, componentDidMount will resolve via Nominatim.
+    let initialArea = prev.area || '';
+    if (citySlug) {
+      const normalizedSlug = decodeURIComponent(citySlug).trim().toLowerCase();
+      const canonicalSlug = getCanonicalCitySlug(normalizedSlug) || normalizedSlug;
+      const staticLocation = getPredefinedCityStaticLocation(canonicalSlug);
+      if (staticLocation?.areaLabel) {
+        initialArea = staticLocation.areaLabel;
+      }
+    }
+
+    const urlFlagEnabled = (raw) =>
+      Boolean(raw) && String(raw).toLowerCase() !== 'false' && String(raw) !== '0';
+
     // On mobile, always use system theme preference since toggle isn't available
     // On desktop, use saved preference if available, otherwise fallback to system theme preference
-    const isDarkMode = IS_MOBILE
-      ? getSystemThemePreference()
-      : prev.isDarkMode !== undefined
-        ? prev.isDarkMode
-        : getSystemThemePreference();
+    // ?dark=true in the URL always takes precedence over everything else
+    const isDarkMode = urlFlagEnabled(urlParams.dark)
+      ? true
+      : IS_MOBILE
+        ? getSystemThemePreference()
+        : prev.isDarkMode !== undefined
+          ? prev.isDarkMode
+          : getSystemThemePreference();
     console.log(
       'Theme preference:',
       isDarkMode ? 'dark' : 'light',
@@ -158,6 +199,20 @@ class App extends Component {
       }
     }
 
+    // `flyto=lat,lng[,zoom]` triggers a Mapbox flyTo animation from the initial
+    // viewport to this target as soon as the map is ready. The optional third
+    // value animates zoom too (if omitted, current zoom is preserved).
+    // Internally we convert to Mapbox's `[lng, lat]` center order.
+    if (urlParams.flyto) {
+      const [lat, lng, zoom] = urlParams.flyto.split(',').map(Number);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        this.pendingFlyToTarget = {
+          center: [lng, lat],
+          zoom: Number.isFinite(zoom) ? zoom : null,
+        };
+      }
+    }
+
     const embedMode = urlParams.embed;
 
     // Avoid first-paint flicker: decide welcome modal state before initial render.
@@ -165,15 +220,19 @@ class App extends Component {
       fromMount: true,
       embedMode,
     });
+    const deferMapBootForWelcome = shouldDeferMapBootUntilAfterPaint({
+      fromMount: true,
+      embedMode,
+    });
 
     return {
-      area: prev.area || '',
+      area: initialArea,
       showSatellite: ENABLE_SATELLITE_TOGGLE
         ? prev.showSatellite !== undefined
           ? prev.showSatellite
           : false
         : false,
-      zoom: shouldStartFromGlobeView ? 1.8 : prev.zoom || urlParams.z || DEFAULT_ZOOM,
+      zoom: shouldStartFromGlobeView ? 1.8 : parseFloat(urlParams.z) || prev.zoom || DEFAULT_ZOOM,
       lat: shouldStartFromGlobeView ? 0 : parseFloat(urlParams.lat) || prev.lat || DEFAULT_LAT,
       lng: shouldStartFromGlobeView ? 0 : parseFloat(urlParams.lng) || prev.lng || DEFAULT_LNG,
       geoJson: null,
@@ -186,7 +245,11 @@ class App extends Component {
       embedMode,
       isSidebarOpen: prev.isSidebarOpen !== undefined ? prev.isSidebarOpen : DEFAULT_SIDEBAR_OPEN,
       hideUI: shouldAutoOpenWelcomeModal,
+      hideUIFromUrl: urlFlagEnabled(urlParams.hideui),
       aboutModal: shouldAutoOpenWelcomeModal,
+      mapBootReady: !deferMapBootForWelcome,
+      cleanMode: urlFlagEnabled(urlParams.clean),
+      darkModeFromUrl: urlFlagEnabled(urlParams.dark),
       layersLegendModal: false,
       layersLegendScrollToSection: null,
       lengthCalculationStrategy: DEFAULT_LENGTH_CALCULATE_STRATEGIES,
@@ -199,8 +262,14 @@ class App extends Component {
       isDirectionsPanelOpen: false,
       airtableMetadataRecords: null,
       airtableCityFields: null,
+      globalSearchPin: null,
+      favorites: readFavorites(),
     };
   }
+
+  handleFavoritesChanged = (favorites) => {
+    this.setState({ favorites });
+  };
 
   loadAirtableMetadata = async () => {
     try {
@@ -287,14 +356,17 @@ class App extends Component {
 
   openCityPicker() {
     this.setState({ aboutModal: false, hideUI: false });
-    const body = document.querySelector('body');
-    if (body) body.classList.add('show-city-picker');
+    this.props.router.navigate({ search: '?buscar' });
   }
 
   openLayersLegendModal(scrollToSection = null) {
+    const sectionId =
+      typeof scrollToSection === 'string' || typeof scrollToSection === 'number'
+        ? scrollToSection
+        : null;
     this.setState({
       layersLegendModal: true,
-      layersLegendScrollToSection: scrollToSection,
+      layersLegendScrollToSection: sectionId,
     });
   }
 
@@ -352,7 +424,19 @@ class App extends Component {
   }
 
   getParamsFromURL() {
-    const possibleParams = ['z', 'lat', 'lng', 'embed', 'debug', 'from', 'to'];
+    const possibleParams = [
+      'z',
+      'lat',
+      'lng',
+      'embed',
+      'debug',
+      'from',
+      'to',
+      'clean',
+      'hideui',
+      'dark',
+      'flyto',
+    ];
     const urlParams = new URLSearchParams(this.props.location.search);
     let paramsObj = {};
 
@@ -492,9 +576,10 @@ class App extends Component {
   }
 
   syncRouteSlugWithArea(area) {
-    // Prevent a "bare root" entry ("/" with no params) from being rewritten
-    // into "/:citySlug" by our map-inferred area initialization.
-    if (this.initialBareRootEntry && !this.getCanonicalRouteCitySlug()) {
+    // Only suppress slug generation for bare-root visitors while the welcome modal is
+    // still open. Adding a slug while the modal is showing would silently flip it to
+    // "city mode". Once the user has dismissed the modal the URL should update freely.
+    if (this.initialBareRootEntry && !this.getCanonicalRouteCitySlug() && this.state.aboutModal) {
       return;
     }
 
@@ -506,13 +591,26 @@ class App extends Component {
 
     const hasRouteParams = this.state.fromPoint && this.state.toPoint;
     const nextPath = hasRouteParams ? `/${areaSlug}/routes` : `/${areaSlug}`;
-    const nextUrl = `${nextPath}${window.location.search || ''}`;
+
+    // Always embed the current viewport in the URL so that when componentDidUpdate
+    // detects the slug change, hasExplicitViewportInURL() returns true and
+    // resolveCitySlugToAreaAndViewport is not called (which would fly the map to the
+    // city centre, overriding the user's current position).
+    const params = new URLSearchParams(window.location.search);
+    if (Number.isFinite(this.state.lat) && Number.isFinite(this.state.lng)) {
+      params.set('lat', this.state.lat.toFixed(7));
+      params.set('lng', this.state.lng.toFixed(7));
+      params.set('z', this.state.zoom.toFixed(2));
+    }
+    const nextUrl = `${nextPath}${params.toString() ? '?' + params.toString() : ''}`;
 
     const navigate = this.props.router?.navigate;
     if (typeof navigate === 'function') {
-      navigate(nextUrl);
+      // Use replace so that continuous map panning across city boundaries does not
+      // flood the browser history stack with intermediate-city entries.
+      navigate(nextUrl, { replace: true });
     } else {
-      window.history.pushState(null, '', nextUrl);
+      window.history.replaceState(null, '', nextUrl);
     }
   }
 
@@ -543,6 +641,7 @@ class App extends Component {
     if (this.lastResolvedCitySlug === citySlug) return;
 
     this.lastResolvedCitySlug = citySlug;
+    this._lastExplicitCityNavTimestamp = Date.now();
 
     try {
       const normalizedSlug = decodeURIComponent(citySlug).trim().toLowerCase();
@@ -703,6 +802,48 @@ class App extends Component {
     this.deferredCityFocus = null;
   }
 
+  // Applies the `?flyto=lat,lng[,zoom]` URL param by animating the camera
+  // from the current map center to the target with Mapbox's flyTo. We wait
+  // for the map's first `load` event and then add a short pause so the user
+  // perceives the origin before the camera starts moving.
+  //
+  // The URL param is intentionally NOT stripped, so refreshing the page
+  // replays the animation. To keep the replay faithful, `updateURL` freezes
+  // `lat`/`lng`/`z` writes while `flyto` is present (otherwise post-animation
+  // map moves would overwrite the origin with the destination, leaving
+  // nothing to fly from on the next load).
+  applyPendingFlyTo() {
+    if (!this.pendingFlyToTarget || !this.state.map) return;
+    const map = this.state.map;
+    const target = this.pendingFlyToTarget;
+    this.pendingFlyToTarget = null;
+
+    const doFly = () => {
+      try {
+        const flyOptions = {
+          center: target.center,
+          duration: 3000,
+          essential: true,
+        };
+        if (target.zoom !== null) {
+          flyOptions.zoom = target.zoom;
+        }
+        map.flyTo(flyOptions);
+      } catch (e) {
+        console.error('Failed to apply pending flyto:', e);
+      }
+    };
+
+    const FLYTO_INITIAL_PAUSE_MS = 700;
+    const scheduleFly = () => setTimeout(doFly, FLYTO_INITIAL_PAUSE_MS);
+
+    if (map.loaded()) {
+      scheduleFly();
+    } else {
+      map.once('load', scheduleFly);
+    }
+  }
+
   async reverseGeocodeURLPoints() {
     // Reverse geocode URL-loaded points to get proper place names
     if (
@@ -710,6 +851,10 @@ class App extends Component {
       this.state.fromPoint.result.place_name === 'Origem carregada da URL'
     ) {
       try {
+        trackCall({
+          api: API_TYPES.MAPBOX_GEOCODING,
+          details: `${this.state.fromPoint.result.center[1].toFixed(4)}, ${this.state.fromPoint.result.center[0].toFixed(4)}`,
+        });
         const response = await fetch(
           `https://api.mapbox.com/geocoding/v5/mapbox.places/${this.state.fromPoint.result.center[0]},${this.state.fromPoint.result.center[1]}.json?access_token=${MAPBOX_ACCESS_TOKEN}&language=pt-BR`
         );
@@ -733,6 +878,10 @@ class App extends Component {
 
     if (this.state.toPoint && this.state.toPoint.result.place_name === 'Destino carregado da URL') {
       try {
+        trackCall({
+          api: API_TYPES.MAPBOX_GEOCODING,
+          details: `${this.state.toPoint.result.center[1].toFixed(4)}, ${this.state.toPoint.result.center[0].toFixed(4)}`,
+        });
         const response = await fetch(
           `https://api.mapbox.com/geocoding/v5/mapbox.places/${this.state.toPoint.result.center[0]},${this.state.toPoint.result.center[1]}.json?access_token=${MAPBOX_ACCESS_TOKEN}&language=pt-BR`
         );
@@ -758,9 +907,17 @@ class App extends Component {
   updateURL() {
     const currentParams = new URLSearchParams(window.location.search);
 
-    currentParams.set('lat', this.state.lat.toFixed(7));
-    currentParams.set('lng', this.state.lng.toFixed(7));
-    currentParams.set('z', this.state.zoom.toFixed(2));
+    // While `flyto` is present, keep `lat`/`lng`/`z` frozen at the original
+    // values so refreshing the page replays the animation from the same origin.
+    // Map moves (including the flyTo itself and user pans/zooms afterwards)
+    // won't be reflected in the URL until `flyto` is removed.
+    const hasFlytoParam = currentParams.has('flyto');
+
+    if (!hasFlytoParam) {
+      currentParams.set('lat', this.state.lat.toFixed(7));
+      currentParams.set('lng', this.state.lng.toFixed(7));
+      currentParams.set('z', this.state.zoom.toFixed(2));
+    }
 
     if (this.state.debugMode) {
       currentParams.set('debug', 'true');
@@ -772,6 +929,24 @@ class App extends Component {
       currentParams.set('embed', 'true');
     } else {
       currentParams.delete('embed');
+    }
+
+    if (this.state.cleanMode) {
+      currentParams.set('clean', 'true');
+    } else {
+      currentParams.delete('clean');
+    }
+
+    if (this.state.darkModeFromUrl) {
+      currentParams.set('dark', 'true');
+    } else {
+      currentParams.delete('dark');
+    }
+
+    if (this.state.hideUIFromUrl) {
+      currentParams.set('hideui', 'true');
+    } else {
+      currentParams.delete('hideui');
     }
 
     if (this.state.fromPoint && this.state.toPoint) {
@@ -958,7 +1133,7 @@ class App extends Component {
 
           if (SAVE_TO_FIREBASE) {
             const storageKey = this.getStorageKeyForArea(areaName);
-            this.storage
+            this.getStorage()
               .save(areaName, newData.geoJson, lengths, { storageKey })
               .then(() => {
                 if (!IS_PROD) {
@@ -1036,7 +1211,7 @@ class App extends Component {
       } else {
         // Try to retrieve this area's geojson data from the database
         const storageKey = this.getStorageKeyForArea(this.state.area);
-        this.storage
+        this.getStorage()
           .load(this.state.area, { storageKey })
           .then((data) => {
             if (data) {
@@ -1160,6 +1335,12 @@ class App extends Component {
     const currCitySlug = this.getCitySlugFromRoute();
     if (prevCitySlug !== currCitySlug) {
       this.lastResolvedCitySlug = null;
+      // Stamp the navigation timestamp immediately so that any in-flight stale geocodes
+      // from the previous city are suppressed regardless of which branch below runs.
+      // Without this, resolveCitySlugToAreaAndViewport might be skipped (e.g. when
+      // hasExplicitViewportInURL is true) and the timestamp would never be updated,
+      // letting stale geocodes overwrite the new city slug.
+      this._lastExplicitCityNavTimestamp = Date.now();
       if (currCitySlug) {
         const routeWasNormalized = this.normalizeCitySlugRouteIfNeeded();
         if (routeWasNormalized) return;
@@ -1172,6 +1353,7 @@ class App extends Component {
 
     if (this.state.map && this.state.map !== prevState.map) {
       this.applyDeferredCityFocus();
+      this.applyPendingFlyTo();
     }
 
     if (this.state.area !== prevState.area) {
@@ -1295,7 +1477,27 @@ class App extends Component {
     this.calculateLengths();
   };
 
+  scheduleWelcomeMapBootAfterPaint() {
+    if (this._welcomeMapBootScheduled || this.state.mapBootReady) return;
+    this._welcomeMapBootScheduled = true;
+    scheduleAfterFirstPaint(() => {
+      if (this._unmounted) return;
+      this.startDeferredMapBoot();
+    });
+  }
+
+  startDeferredMapBoot() {
+    if (this.state.mapBootReady) return;
+    this.setState({ mapBootReady: true }, () => {
+      this.updateData();
+    });
+  }
+
   componentDidMount() {
+    if (!this.state.mapBootReady) {
+      this.scheduleWelcomeMapBootAfterPaint();
+    }
+
     updateDocumentMeta(this.state.area, this.getPreferredCanonicalSlugForMeta(this.state.area));
 
     // Initialize theme
@@ -1341,6 +1543,8 @@ class App extends Component {
   }
 
   componentWillUnmount() {
+    this._unmounted = true;
+
     // Clean up theme change listener
     if (this.themeChangeListener && window.matchMedia) {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -1376,8 +1580,29 @@ class App extends Component {
     requestAnimationFrame(() => {
       const nextState = { ...newState };
       if (typeof nextState.area === 'string' && nextState.area.trim()) {
-        nextState.area = this.normalizeAreaLabelForDisplay(nextState.area);
+        const normalized = this.normalizeAreaLabelForDisplay(nextState.area);
+
+        // Guard against stale reverse-geocode results: a geocode that was *requested before*
+        // an explicit city navigation (picker, direct URL) can resolve afterwards and overwrite
+        // the new slug.  We detect this by comparing the geocode's request timestamp
+        // (_geocodeRequestTime, set in Map.onMapMoveEnded) against the last navigation
+        // timestamp.  Geocodes requested after the navigation are always accepted.
+        const routeSlug = this.getCanonicalRouteCitySlug();
+        if (normalized && routeSlug) {
+          const candidateSlug = this.getCitySlugFromArea(normalized);
+          const geocodeRequestTime = nextState._geocodeRequestTime ?? Date.now();
+          const isStaleGeocode = geocodeRequestTime < this._lastExplicitCityNavTimestamp;
+          if (candidateSlug && candidateSlug !== routeSlug && isStaleGeocode) {
+            // Stale geocode result — drop the area update to protect the current slug.
+            delete nextState.area;
+          } else {
+            nextState.area = normalized;
+          }
+        } else {
+          nextState.area = normalized;
+        }
       }
+      delete nextState._geocodeRequestTime;
       this.setState(nextState);
     });
   }
@@ -1412,6 +1637,62 @@ class App extends Component {
       this.setState({ area: normalizedArea });
     }
   }
+
+  clearGlobalSearchPin = () => {
+    this.setState({ globalSearchPin: null });
+  };
+
+  handleGlobalSearchPlaceSelect = async ({
+    lng,
+    lat,
+    areaContext,
+    title,
+    address,
+    placeTypes,
+    placeId,
+  }) => {
+    const zoom = 16;
+    let rawArea = areaContext != null ? String(areaContext).trim() : '';
+    if (!rawArea) {
+      try {
+        const rev = await reverseGeocodePlace({ lng, lat });
+        rawArea = rev?.place_name ? String(rev.place_name).trim() : '';
+      } catch (e) {
+        console.debug('[global-search] reverse geocode for app area failed', e);
+      }
+    }
+    if (!rawArea) {
+      rawArea = this.state.area ? String(this.state.area).trim() : '';
+    }
+    const normalizedArea = this.normalizeAreaLabelForDisplay(rawArea);
+
+    this.setState(
+      {
+        area: normalizedArea || this.state.area,
+        lat,
+        lng,
+        zoom,
+        globalSearchPin: {
+          lng,
+          lat,
+          title: title || '',
+          address: address || '',
+          placeTypes: Array.isArray(placeTypes) ? placeTypes : [],
+          placeId: placeId != null ? String(placeId) : '',
+          areaContext: rawArea || '',
+        },
+      },
+      () => {
+        if (this.state.map) {
+          this.state.map.flyTo({
+            center: [lng, lat],
+            zoom,
+            duration: 1500,
+          });
+        }
+      }
+    );
+  };
 
   forceMapReinitialization() {
     this.setState((prevState) => ({
@@ -1448,6 +1729,9 @@ class App extends Component {
       closeAboutModal: this.closeAboutModal,
       openCityPicker: this.openCityPicker,
       closeLayersLegendModal: this.closeLayersLegendModal,
+      clearGlobalSearchPin: this.clearGlobalSearchPin,
+      handleGlobalSearchPlaceSelect: this.handleGlobalSearchPlaceSelect,
+      handleFavoritesChanged: this.handleFavoritesChanged,
     };
     return (
       <AntdAppShell isDarkMode={this.state.isDarkMode}>

@@ -12,6 +12,7 @@ import {
   AREA_ID_OVERRIDES,
   BLACKLISTED_CITIES_FOR_EXTRA_LAYERS,
 } from './config/constants.js';
+import { API_TYPES, trackCall } from './dev/apiTracker.js';
 import { slugify } from './utils/utils.js';
 
 import * as layersDefinitions from './config/layers.json';
@@ -88,6 +89,8 @@ class OSMController {
         url.searchParams.set(key, String(value));
       }
     });
+
+    trackCall({ api: API_TYPES.NOMINATIM_SEARCH, details: query });
 
     const response = await fetch(url.toString(), {
       headers: { Accept: 'application/json' },
@@ -319,6 +322,8 @@ class OSMController {
           console.debug('generated query: ', query);
 
           const encodedQuery = encodeURI(query);
+
+          trackCall({ api: API_TYPES.OVERPASS, details: constraints.area });
 
           let requests = [];
           for (let i = 0; i < OVERPASS_SERVERS.length; i++) {

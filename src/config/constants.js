@@ -26,6 +26,9 @@ export const LENGTH_COUNTED_LAYER_IDS = [
   // 'proibido',
 ];
 
+/** City switcher card mini donut: ciclovia + ciclofaixa only (aligned with common “protected lane” reading). */
+export const CITY_SWITCHER_MINI_CHART_LAYER_IDS = ['ciclovia', 'ciclofaixa'];
+
 // Velokarte: same-origin proxy. Public Overpass servers have unreliable CORS;
 // /api/overpass forwards to overpass-api.de via Bun.
 export const OVERPASS_SERVERS = ['/api/overpass'];
@@ -42,7 +45,13 @@ export const MOBILE_MAX_WIDTH = '480px';
 export const IS_MOBILE =
   window.matchMedia && window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH})`).matches;
 
-export { TOPBAR_HEIGHT, ROUTE_COLORS, MAP_COLORS } from './design-tokens.js';
+export {
+  TOPBAR_HEIGHT,
+  ROUTE_COLORS,
+  MAP_COLORS,
+  FAVORITE_COLORS,
+  INFRASTRUCTURE_BADGE_TOKENS,
+} from './design-tokens.js';
 
 /*
  * Routing
@@ -57,10 +66,25 @@ export const HYBRID_MAX_RESULTS = IS_MOBILE
   : HYBRID_MAX_RESULTS_DESKTOP;
 export const MIN_ROUTE_COVERAGE_PERCENT_TO_DISPLAY = 5;
 
+/**
+ * Route score weights by infrastructure type (keys match `coverageByType` labels where
+ * applicable; higher = better). `Rua` is uncovered mileage (implicit in breakdowns, weight 0).
+ */
+export const ROUTE_INFRASTRUCTURE_QUALITY_WEIGHTS = Object.freeze({
+  Ciclovia: 1.0,
+  'Calçada compartilhada': 1.0,
+  Ciclofaixa: 0.8,
+  Ciclorrota: 0.4,
+  Rua: 0,
+});
+
 /*
  * City picker
  */
 export const MAX_RECENT_CITIES = IS_MOBILE ? 3 : 6;
+/** Max unified recent rows (cities + places) persisted in `localStorage`. */
+export const MAX_RECENT_ITEMS_STORED = 10;
+export const MAX_RECENT_ITEMS_DISPLAY = IS_MOBILE ? 3 : 5;
 export const ENABLE_MAP_CLICK_TO_SET_POINTS = false;
 export const ENABLE_AUTO_AREA_CHANGE_ON_POINT = false;
 // Velokarte: comments / Airtable feature stripped. Code paths stay (gated by this flag).
@@ -107,11 +131,15 @@ export const ROUTE_LINE_PADDING_WIDTH = 2;
 export const ROUTE_LINE_BORDER_WIDTH = 0;
 export const ROUTE_LINE_BORDER_OPACITY = 0.1;
 
+export const ROUTE_UNSELECTED_LIGHT_BORDER_WIDTH = 2;
+export const ROUTE_UNSELECTED_LIGHT_BORDER_OPACITY = 0.5;
+
 export const ROUTE_LINE_WIDTH = ROUTE_FIXED_WIDTH;
 export const ROUTE_LINE_PADDING_GAP_WIDTH = ROUTE_FIXED_WIDTH + ROUTE_LINE_PADDING_WIDTH - 3;
 export const ROUTE_LINE_GAP_WIDTH = ROUTE_FIXED_WIDTH - ROUTE_LINE_BORDER_WIDTH - 1;
 
-export const NEAR_DESTINATION_POI_RADIUS_KM = 0.6; // Radius in kilometers for showing POIs near destination during route planning
+export const NEAR_ROUTE_ENDPOINT_POI_RADIUS_KM = 0.4;
+export const ROUTE_ENDPOINT_VISIBLE_POI_ICONS = ['poi-rental', 'poi-bikeparking'];
 
 // At low zoom, line widths are scaled down by dividing lineWidth by these values.
 export const LOW_ZOOM_WIDTH_DIVISOR = 5;

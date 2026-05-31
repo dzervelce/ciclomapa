@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import PropTypes from 'prop-types';
 
 import { Space, Button, Popover, Dropdown } from 'antd';
 
@@ -15,14 +16,18 @@ import {
 
 import { IconContext } from 'react-icons';
 
+import { useNavigate } from 'react-router-dom';
+
 import { timeSince, getOsmUrl } from './utils/utils.js';
 
-import { TOPBAR_HEIGHT, IS_MOBILE } from './config/constants.js';
+import { TOPBAR_HEIGHT, IS_MOBILE, IS_PROD } from './config/constants.js';
 
 import EditModal from './EditModal.js';
 import Logo from './components/Logo';
 
 import './TopBar.css';
+
+const LAST_UPDATE_LABEL_VISIBLE_MS = 6000;
 
 function TopBar(props) {
   const {
@@ -30,6 +35,7 @@ function TopBar(props) {
     lastUpdate,
     forceUpdate,
     embedMode,
+    debugMode,
     isDarkMode,
     toggleTheme,
     showStreetLamps,
@@ -43,8 +49,21 @@ function TopBar(props) {
     toggleSidebar,
   } = props;
 
+  const navigate = useNavigate();
+
   const [editModal, setEditModal] = useState(false);
   const [hasDismissedEditModal, setHasDismissedEditModal] = useState(false);
+  const [showLastUpdate, setShowLastUpdate] = useState(false);
+
+  useEffect(() => {
+    if (loading || !lastUpdate) {
+      setShowLastUpdate(false);
+      return undefined;
+    }
+    setShowLastUpdate(true);
+    const timer = setTimeout(() => setShowLastUpdate(false), LAST_UPDATE_LABEL_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [title, lastUpdate, loading]);
 
   const openEditModal = useCallback(() => setEditModal(true), []);
   const closeEditModal = useCallback(() => setEditModal(false), []);
@@ -53,9 +72,8 @@ function TopBar(props) {
   }, []);
 
   const showCityPicker = useCallback(() => {
-    const body = document.querySelector('body');
-    body.classList.add('show-city-picker');
-  }, []);
+    navigate({ search: '?buscar' });
+  }, [navigate]);
 
   const newComment = useCallback(() => {
     document.dispatchEvent(new Event('newComment'));
@@ -118,14 +136,14 @@ function TopBar(props) {
         <div className="flex items-start justify-between text-white w-full">
           {!IS_MOBILE && (
             <a href="/" className={'mt-2'}>
-              <Logo className={embedMode ? 'text-white opacity-20' : 'text-xl'} />
+              <Logo className={embedMode ? 'text-white opacity-20' : 'text-sm'} />
             </a>
           )}
 
           {!embedMode && (
             <div className={`city-picker sm:text-center ${IS_MOBILE && 'w-full'}`}>
-              <div className={`flex flex-col items-center sm:mb-1`}>
-                <div className={`relative ${IS_MOBILE && 'w-full'} rounded-full overflow-hidden`}>
+              <div className="flex flex-col items-center sm:mb-1">
+                <div className={`relative z-10 ${IS_MOBILE && 'w-full'} rounded-full`}>
                   <Button
                     className="glass-bg"
                     block={IS_MOBILE}
@@ -181,7 +199,15 @@ function TopBar(props) {
                           </div>
                         }
                       >
-                        <div className="flex flex-center items-center gap-1 font-regular cursor text-xs mt-1 opacity-50 hover:opacity-100 transition-opacity duration-300">
+                        <div
+                          className={[
+                            'flex flex-center items-center gap-1 font-regular cursor text-xs transition-all transform  duration-700 ease-out',
+                            showLastUpdate
+                              ? 'opacity-50 translate-y-1.5 hover:opacity-100'
+                              : ' opacity-0 -translate-y-3 pointer-events-none',
+                          ].join(' ')}
+                          aria-hidden={!showLastUpdate}
+                        >
                           Atjaunots pirms {timeSince(lastUpdate)}
                         </div>
                       </Popover>
@@ -245,6 +271,12 @@ function TopBar(props) {
                   Par
                 </Button>
 
+                {!IS_PROD && debugMode && (
+                  <Button className="glass-bg" onClick={() => navigate('/dev/place-type-icons')}>
+                    Revisar ícones
+                  </Button>
+                )}
+
                 <Dropdown menu={collaborateMenu}>
                   <Button className="glass-bg">
                     <span> Iesaistīties </span>
@@ -280,3 +312,32 @@ function TopBar(props) {
 }
 
 export default TopBar;
+
+TopBar.propTypes = {
+  title: PropTypes.string.isRequired,
+  lastUpdate: PropTypes.oneOfType([PropTypes.instanceOf(Date), PropTypes.string]),
+  forceUpdate: PropTypes.func.isRequired,
+  embedMode: PropTypes.bool,
+  debugMode: PropTypes.bool,
+  isDarkMode: PropTypes.bool,
+  toggleTheme: PropTypes.func.isRequired,
+  loading: PropTypes.bool,
+  lat: PropTypes.number,
+  lng: PropTypes.number,
+  z: PropTypes.number,
+  openAboutModal: PropTypes.func.isRequired,
+  isSidebarOpen: PropTypes.bool,
+  toggleSidebar: PropTypes.func.isRequired,
+};
+
+TopBar.defaultProps = {
+  lastUpdate: null,
+  embedMode: false,
+  debugMode: false,
+  isDarkMode: false,
+  loading: false,
+  lat: null,
+  lng: null,
+  z: null,
+  isSidebarOpen: false,
+};

@@ -65,6 +65,11 @@ export function slugify(str) {
     .replace(/^-+|-+$/g, ''); // trim leading/trailing dashes
 }
 
+/** Public JPG for a way layer in the legend UI (`public/{slug}.jpg`). */
+export function getLayerLegendImageSrc(layerName) {
+  return `/${slugify(layerName)}.jpg`;
+}
+
 const typeSizes = {
   undefined: () => 0,
   boolean: () => 4,

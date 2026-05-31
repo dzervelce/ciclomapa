@@ -1,49 +1,67 @@
 import React, { Component } from 'react';
+import PropTypes from 'prop-types';
 import { useDirections } from './contexts/DirectionsContext';
 import { Button, Select } from 'antd';
 import { HiX as IconClose, HiOutlineArrowLeft as IconBack } from 'react-icons/hi';
-import { FaDirections as IconRoute } from 'react-icons/fa';
+// import { PiPersonSimpleBikeBold as IconRoute } from 'react-icons/pi';
 import { HiOutlineArrowsUpDown as IconSwap, HiTrash as IconTrash } from 'react-icons/hi2';
 import { HiCog as IconCog } from 'react-icons/hi';
 import { HiInformationCircle as IconInfoCircle } from 'react-icons/hi';
-import GooglePlacesGeocoder from './GooglePlacesGeocoder.js';
 import mapboxgl from 'mapbox-gl';
 import { Popover } from 'antd';
 
 import './DirectionsPanel.css';
 
 import {
-  GOOGLE_PLACES_API_KEY,
   IS_MOBILE,
   HYBRID_MAX_RESULTS,
   ENABLE_MAP_CLICK_TO_SET_POINTS,
   ENABLE_AUTO_AREA_CHANGE_ON_POINT,
-  SUPPORTED_COUNTRY_CODES,
-  GOOGLE_PLACES_DEFAULT_REGION,
 } from './config/constants.js';
 import DirectionsManager from './DirectionsManager.js';
 
 import LocationSearchInput from './features/directions/components/LocationSearchInput.js';
 import RouteSortDropdown from './features/directions/components/RouteSortDropdown.js';
 import RoutesList from './features/directions/components/RoutesList.js';
+import {
+  ensureGooglePlacesReady,
+  getAreaStringFromResultLike,
+  getCityFromResultLike,
+  getGooglePlacesGeocoder,
+} from './googlePlacesClient.js';
+import {
+  geocodePlacesSuggestionToResult,
+  getDirectionsPanelPlacesSearchOptions,
+  PLACES_AUTOCOMPLETE_MIN_QUERY_LENGTH,
+  searchPlacesForAutocomplete,
+} from './placesAutocomplete.js';
 
-const googlePlacesGeocoder = new GooglePlacesGeocoder({
-  apiKey: GOOGLE_PLACES_API_KEY,
-  language: 'pt-BR',
-  region: GOOGLE_PLACES_DEFAULT_REGION,
-});
+const IconRoute = () => {
+  const clipPathId = React.useId().replace(/:/g, '');
 
-// Initialize the geocoder when needed
-let geocoderInitialized = false;
-const ensureGeocoderReady = async () => {
-  if (!geocoderInitialized) {
-    try {
-      await googlePlacesGeocoder.loadGoogleMapsAPI();
-      geocoderInitialized = true;
-    } catch (error) {
-      console.error('Failed to initialize Google Places Geocoder:', error);
-    }
-  }
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 17 17"
+      width="1em"
+      height="1em"
+      fill="none"
+      aria-hidden="true"
+    >
+      <g clipPath={`url(#${clipPathId})`}>
+        <path
+          fill="currentColor"
+          d="M8.5 2c-.676-.01-.676 1.01 0 1H10v1.266L7.197 6.6 6.223 4H6.5c.676.01.676-1.01 0-1h-2c-.676-.01-.676 1.01 0 1h.652l.891 2.375A3.45 3.45 0 0 0 4.5 6 3.51 3.51 0 0 0 1 9.5C1 11.427 2.573 13 4.5 13S8 11.427 8 9.5c0-.67-.2-1.291-.53-1.824l2.821-2.35.463 1.16C9.71 7.094 9 8.211 9 9.5c0 1.927 1.573 3.5 3.5 3.5S16 11.427 16 9.5 14.427 6 12.5 6c-.283 0-.554.043-.818.107L11 4.402V2.5a.5.5 0 0 0-.5-.5zm-4 5a2.48 2.48 0 0 1 1.555.553L4.18 9.115c-.511.427.128 1.195.64.77l1.875-1.563c.188.352.305.75.305 1.178C7 10.887 5.887 12 4.5 12A2.493 2.493 0 0 1 2 9.5C2 8.113 3.113 7 4.5 7m8 0C13.887 7 15 8.113 15 9.5S13.887 12 12.5 12A2.493 2.493 0 0 1 10 9.5c0-.877.447-1.642 1.125-2.088l.91 2.273c.246.624 1.18.25.93-.37l-.908-2.27C12.2 7.019 12.348 7 12.5 7"
+        />
+        <path stroke="currentColor" strokeDasharray="2 2" strokeLinecap="round" d="M.5 15.5h17" />
+      </g>
+      <defs>
+        <clipPath id={clipPathId}>
+          <path fill="currentColor" d="M0 0h17v17H0z" />
+        </clipPath>
+      </defs>
+    </svg>
+  );
 };
 
 class DirectionsPanel extends Component {
@@ -95,43 +113,6 @@ class DirectionsPanel extends Component {
     this.getSortedRoutes = this.getSortedRoutes.bind(this);
   }
 
-  getCityFromResultLike(resultLike) {
-    const props =
-      resultLike && (resultLike.properties || (resultLike.result && resultLike.result.properties));
-    const addressComponents = props && props.address_components;
-    if (!addressComponents || !Array.isArray(addressComponents)) return null;
-    const findComp = (type) => addressComponents.find((c) => (c.types || []).includes(type));
-    // Prefer locality, fallback to administrative_area_level_2 (common municipality level in BR)
-    const locality = findComp('locality');
-    const admin2 = findComp('administrative_area_level_2');
-    const sublocality = findComp('sublocality');
-    return (
-      (locality && locality.long_name) ||
-      (admin2 && admin2.long_name) ||
-      (sublocality && sublocality.long_name) ||
-      null
-    );
-  }
-
-  getAreaStringFromResultLike(resultLike) {
-    const props =
-      resultLike && (resultLike.properties || (resultLike.result && resultLike.result.properties));
-    const addressComponents = props && props.address_components;
-    if (!addressComponents || !Array.isArray(addressComponents)) return null;
-    const findComp = (type) => addressComponents.find((c) => (c.types || []).includes(type));
-    const city = this.getCityFromResultLike(resultLike);
-    const state =
-      (findComp('administrative_area_level_1') &&
-        (findComp('administrative_area_level_1').short_name ||
-          findComp('administrative_area_level_1').long_name)) ||
-      null;
-    const country =
-      (findComp('country') && (findComp('country').long_name || findComp('country').short_name)) ||
-      null;
-    const parts = [city, state, country].filter(Boolean);
-    return parts.length ? parts.join(', ') : null;
-  }
-
   validateSameCity(type, newResultLike) {
     // Determine the other point
     const otherPoint = type === 'to' ? this.props.fromPoint : this.props.toPoint;
@@ -141,8 +122,8 @@ class DirectionsPanel extends Component {
     }
     const fromLike = type === 'to' ? otherPoint : newResultLike;
     const toLike = type === 'to' ? newResultLike : otherPoint;
-    const fromCity = this.getCityFromResultLike(fromLike.result || fromLike);
-    const toCity = this.getCityFromResultLike(toLike.result || toLike);
+    const fromCity = getCityFromResultLike(fromLike.result || fromLike);
+    const toCity = getCityFromResultLike(toLike.result || toLike);
     if (fromCity && toCity && fromCity !== toCity) {
       const targetCity = type === 'to' ? fromCity : toCity;
       this.setState({
@@ -284,7 +265,7 @@ class DirectionsPanel extends Component {
   }
 
   async handleSearch(value, inputType) {
-    if (!value || value.length < 3) {
+    if (!value || value.length < PLACES_AUTOCOMPLETE_MIN_QUERY_LENGTH) {
       this.setState({ [`${inputType}Suggestions`]: [] });
       return;
     }
@@ -292,14 +273,10 @@ class DirectionsPanel extends Component {
     this.setState({ [`${inputType}SearchLoading`]: true });
 
     try {
-      await ensureGeocoderReady();
-      const results = await googlePlacesGeocoder.search(value, {
-        proximity: this.props.map
-          ? [this.props.map.getCenter().lng, this.props.map.getCenter().lat]
-          : null,
-        countryCodes: [...SUPPORTED_COUNTRY_CODES],
-        limit: 5,
-      });
+      const results = await searchPlacesForAutocomplete(
+        value,
+        getDirectionsPanelPlacesSearchOptions(this.props.map)
+      );
 
       this.setState({
         [`${inputType}Suggestions`]: results,
@@ -318,42 +295,16 @@ class DirectionsPanel extends Component {
     console.debug(`${inputType} point selected:`, result);
 
     try {
-      // If this is a Places API prediction, we need to get the coordinates
-      if (result.properties && result.properties.place_id && !result.center) {
-        await ensureGeocoderReady();
-        const placeDetails = await googlePlacesGeocoder.getPlaceDetails(result.properties.place_id);
+      const { result: resolved } = await geocodePlacesSuggestionToResult(result);
 
-        // Create a complete result with coordinates
-        const completeResult = {
-          ...result,
-          center: placeDetails.coordinates,
-          geometry: {
-            coordinates: placeDetails.coordinates,
-          },
-          properties: {
-            ...result.properties,
-            formatted_address: placeDetails.formatted_address,
-            name: placeDetails.name,
-            types: placeDetails.types,
-            address_components: placeDetails.address_components,
-          },
-        };
-        // Validate city when setting origin/destination
-        if (!this.validateSameCity(inputType, completeResult)) {
-          return;
-        }
-        this.handleGeocoderResult({ result: completeResult }, inputType, true);
-      } else {
-        // If it already has coordinates, use it directly
-        if (!this.validateSameCity(inputType, result)) {
-          return;
-        }
-        this.handleGeocoderResult({ result }, inputType, true);
+      if (!this.validateSameCity(inputType, resolved)) {
+        return;
       }
+      this.handleGeocoderResult({ result: resolved }, inputType, true);
 
       this.setState({
         [`${inputType}Suggestions`]: [],
-        [`${inputType}SearchValue`]: result.place_name,
+        [`${inputType}SearchValue`]: resolved.place_name,
       });
 
       // Auto-focus to destination input if origin is selected and no destination is set
@@ -365,7 +316,6 @@ class DirectionsPanel extends Component {
       }
     } catch (error) {
       console.error('Error getting place details:', error);
-      // Fallback to the original result
       if (this.validateSameCity(inputType, result)) {
         this.handleGeocoderResult({ result }, inputType);
       }
@@ -460,7 +410,7 @@ class DirectionsPanel extends Component {
       isFirstPoint &&
       typeof this.props.onAreaChange === 'function'
     ) {
-      const areaStr = this.getAreaStringFromResultLike(result.result || result);
+      const areaStr = getAreaStringFromResultLike(result.result || result);
       if (areaStr && this.props.area !== areaStr) {
         this.props.onAreaChange(areaStr);
       }
@@ -766,8 +716,8 @@ class DirectionsPanel extends Component {
     console.debug(`Reverse geocoding for ${type} point:`, lngLat);
 
     try {
-      await ensureGeocoderReady();
-      const result = await googlePlacesGeocoder.reverseGeocode(lngLat, {
+      await ensureGooglePlacesReady();
+      const result = await getGooglePlacesGeocoder().reverseGeocode(lngLat, {
         language: 'pt-BR',
       });
 
@@ -777,7 +727,7 @@ class DirectionsPanel extends Component {
       // check if the user's current city matches the app's current city
       if (IS_MOBILE && isAutoTriggered && type === 'from' && this.props.area) {
         const appCity = this.props.area.split(',')[0].trim();
-        const geolocationCity = this.getCityFromResultLike(result);
+        const geolocationCity = getCityFromResultLike(result);
 
         if (geolocationCity && appCity && geolocationCity !== appCity) {
           console.debug(
@@ -989,8 +939,7 @@ class DirectionsPanel extends Component {
 
     return (
       <>
-        {
-          // IS_MOBILE &&
+        {(!IS_MOBILE || this.state.collapsed) && (
           <div
             id="directionsPanelMobileButton"
             className={`directions-panel-button ${this.state.collapsed ? 'collapsed' : 'expanded'}`}
@@ -998,7 +947,7 @@ class DirectionsPanel extends Component {
           >
             <IconRoute />
           </div>
-        }
+        )}
         <div
           id="directionsPanel"
           className={`
@@ -1007,7 +956,11 @@ class DirectionsPanel extends Component {
                           IS_MOBILE
                             ? this.state.collapsed
                               ? ''
-                              : 'directions-panel-open'
+                              : `directions-panel-open ${
+                                  showResultsOnMobile
+                                    ? 'directions-panel-open--results'
+                                    : 'directions-panel-open--planning'
+                                }`
                             : this.state.collapsed
                               ? 'hidden'
                               : ''
@@ -1017,53 +970,53 @@ class DirectionsPanel extends Component {
           <div className="cm-panel__body p-4">
             <div
               id="directionsPanel--header"
-              className="cm-panel__header flex justify-between items-start h-6 md:mb-0 mb-2"
+              className="cm-panel__header flex justify-between items-start md:mb-0 mb-2"
             >
               {showResultsOnMobile ? (
-                <>
-                  {/* // Mobile results header with Back button */}
+                <div className="flex w-full items-center justify-between gap-2">
+                  <div className="flex items-center">
+                    <Button
+                      onClick={this.clearDirectionsOnly}
+                      type="text"
+                      size="small"
+                      className="text-white flex items-center flex-shrink-0 -ml-2"
+                      icon={<IconBack className="inline-block" />}
+                      aria-label="Voltar para origem e destino"
+                    />
+                  </div>
+                  <RouteSortDropdown
+                    currentKey={this.state.routeSortMode}
+                    onChange={(key) => this.handleRouteSortChange(key)}
+                  />
                   <Button
-                    onClick={this.clearDirectionsOnly}
+                    onClick={this.toggleCollapse}
                     type="text"
-                    size="small"
-                    className="text-white flex items-center"
-                    icon={
-                      <IconBack
-                        className="mr-1"
-                        style={{
-                          display: 'inline-block',
-                        }}
-                      />
-                    }
-                  >
-                    {/* Voltar */}
-                  </Button>
-                  {IS_MOBILE && (
-                    <>
-                      <RouteSortDropdown
-                        currentKey={this.state.routeSortMode}
-                        onChange={(key) => this.handleRouteSortChange(key)}
-                      />
-                      {/* <Button
-                                                onClick={this.toggleCollapse}
-                                                type="text" 
-                                                shape="circle"
-                                                icon={<IconClose style={{
-                                                    display: 'inline-block',
-                                                }}/>}
-                                            /> */}
-                    </>
-                  )}
-                </>
+                    shape="circle"
+                    icon={<IconClose />}
+                    aria-label="Fechar painel de rotas"
+                    className="flex-shrink-0 -mr-1"
+                  />
+                </div>
               ) : (
                 // Default header
                 <>
-                  <h3 className=" font-semibold flex items-center mb-0">
-                    {/* <IconRoute className="mr-2" /> */}
-                    Maršruts
-                  </h3>
+                  <h3 className="font-semibold flex items-center mb-0">Maršruts</h3>
 
-                  <div className="flex items-start gap-2 -mr-1" style={{ marginTop: '-5px' }}>
+                  <div
+                    className="flex items-start -mr-1 flex-shrink-0"
+                    style={{ marginTop: '-5px' }}
+                  >
+                    {this.props.openLayersLegendModal && (
+                      <Button
+                        type="text"
+                        shape="circle"
+                        data-testid="directions-panel-legend-link"
+                        icon={<IconInfoCircle />}
+                        aria-label="Kā interpretēt karti un maršrutus"
+                        onClick={() => this.props.openLayersLegendModal('routes-section')}
+                      />
+                    )}
+
                     {(directions || this.props.fromPoint || this.props.toPoint) && (
                       <Button
                         onClick={this.clearDirections}
@@ -1107,20 +1060,17 @@ class DirectionsPanel extends Component {
                 </>
               )}
             </div>
-
             {!showResultsOnMobile && (
               <div className="cm-route-points mt-3">
                 <div className="cm-route-points__inputs">
                   <LocationSearchInput
                     inputType="from"
                     parentComponent={this}
-                    googlePlacesGeocoder={googlePlacesGeocoder}
                     className="w-full cm-route-points__input cm-route-points__input--from"
                   />
                   <LocationSearchInput
                     inputType="to"
                     parentComponent={this}
-                    googlePlacesGeocoder={googlePlacesGeocoder}
                     className="w-full cm-route-points__input cm-route-points__input--to"
                   />
                 </div>
@@ -1146,7 +1096,7 @@ class DirectionsPanel extends Component {
             {directionsLoading && (
               <div
                 id="directionsPanel--results"
-                className="cm-panel__results directionsPanel--results md:mt-3 md:space-y-2 space-y-1"
+                className="cm-panel__results directionsPanel--results md:mt-3 md:space-y-2 space-y-2"
               >
                 {!IS_MOBILE && (
                   <div className="flex mb-2">
@@ -1180,14 +1130,12 @@ class DirectionsPanel extends Component {
                 ))}
               </div>
             )}
-
             {(directionsError || this.state.cityValidationError) && (
               <div className="mt-3 p-2 bg-red-600 bg-opacity-20 border border-red-500 rounded text-red-200 text-sm">
                 {directionsError && <div>Erro: {directionsError}</div>}
                 {this.state.cityValidationError && <div>{this.state.cityValidationError}</div>}
               </div>
             )}
-
             {directions && !directionsLoading && (
               <div id="directionsPanel--results" className="md:mt-3">
                 <div className="flex mb-2">
@@ -1207,19 +1155,20 @@ class DirectionsPanel extends Component {
                   onRouteClick={(routeIndex) => this.handleRouteClick(routeIndex)}
                 />
 
-                {/* Disclaimer */}
-                <div className="mt-2 text-gray-500 hover:text-white text-xs flex flex-col">
-                  <div
-                    className="cursor-pointer flex items-center mb-0"
-                    onClick={() =>
-                      this.props.openLayersLegendModal &&
-                      this.props.openLayersLegendModal('routes-section')
-                    }
-                  >
-                    <IconInfoCircle className="mr-1" />
-                    <span>Leia mais sobre os níveis de proteção das rotas</span>
+                {!IS_MOBILE && (
+                  <div className="mt-2 text-gray-500 hover:text-white text-xs flex flex-col">
+                    <div
+                      className="cursor-pointer flex items-center mb-0"
+                      onClick={() =>
+                        this.props.openLayersLegendModal &&
+                        this.props.openLayersLegendModal('routes-section')
+                      }
+                    >
+                      <IconInfoCircle className="mr-1" />
+                      <span>Lasīt vairāk par maršrutu aizsardzības līmeņiem</span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>
@@ -1228,6 +1177,10 @@ class DirectionsPanel extends Component {
     );
   }
 }
+
+DirectionsPanel.propTypes = {
+  openLayersLegendModal: PropTypes.func,
+};
 
 // Wrapper component to use the directions context with the class component
 const DirectionsPanelWrapper = React.forwardRef((props, ref) => {

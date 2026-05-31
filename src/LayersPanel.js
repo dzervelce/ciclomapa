@@ -1,15 +1,12 @@
 import React, { Component } from 'react';
-import { Popover } from 'antd';
+import PropTypes from 'prop-types';
+import { Popover, Button, Flex, Typography } from 'antd';
 
 import { HiEye as IconVisible, HiEyeOff as IconHidden } from 'react-icons/hi';
-import {
-  MdSignalCellularAlt2Bar as IconSignal2,
-  MdSignalCellularAlt as IconSignal3,
-  MdSignalCellularAlt1Bar as IconSignal1,
-} from 'react-icons/md';
 
-import { slugify } from './utils/utils.js';
 import InfrastructureBadge from './components/InfrastructureBadge';
+import { getLayerLegendImageSrc } from './utils/utils.js';
+import { IconSignal1, IconSignal2, IconSignal3 } from './components/ProtectionSignalIcons';
 
 import './LayersPanel.css';
 
@@ -19,6 +16,8 @@ import commentIcon from './img/icons/poi-comment-flat.png';
 import bikeparkingIcon from './img/icons/poi-bikeparking@2x.png';
 import bikeshopIcon from './img/icons/poi-bikeshop@2x.png';
 import bikerentalIcon from './img/icons/poi-bikerental@2x.png';
+
+const { Text } = Typography;
 
 const getInfrastructureFromLayerName = (layerName) => {
   const name = layerName.toLowerCase();
@@ -34,6 +33,27 @@ const iconsMap = {
   'poi-bikeparking': bikeparkingIcon,
   'poi-bikeshop': bikeshopIcon,
   'poi-rental': bikerentalIcon,
+};
+
+const VIAS_CICLAVEIS_LAYER_NAMES = new Set([
+  'Ciclovia',
+  'Calçada compartilhada',
+  'Ciclofaixa',
+  'Ciclorrota',
+]);
+
+const OUTRAS_VIAS_LAYER_NAMES = new Set(['Baixa velocidade', 'Trilha', 'Proibido']);
+
+/** @returns {string | null} LayersLegendModal section id */
+const getLegendSectionForLayer = (layer) => {
+  if (layer.type === 'poi') return 'pontos-section';
+  if (layer.type === 'way' && VIAS_CICLAVEIS_LAYER_NAMES.has(layer.name)) {
+    return 'vias-ciclaveis-section';
+  }
+  if (layer.type === 'way' && OUTRAS_VIAS_LAYER_NAMES.has(layer.name)) {
+    return 'outras-vias-section';
+  }
+  return null;
 };
 
 class LayersPanel extends Component {
@@ -58,6 +78,85 @@ class LayersPanel extends Component {
     });
   }
 
+  openLegend(sectionId = null) {
+    const { openLayersLegendModal } = this.props;
+    if (openLayersLegendModal) {
+      openLayersLegendModal(sectionId);
+    }
+  }
+
+  renderPopoverContent(layer) {
+    const { embedMode, openLayersLegendModal, isDarkMode } = this.props;
+    const sectionId = getLegendSectionForLayer(layer);
+
+    return (
+      <div className="flex flex-col gap-3 max-w-full box-border">
+        {layer.type === 'way' ? (
+          <div
+            className="rounded-lg overflow-hidden"
+            style={{ background: 'var(--ant-color-fill-tertiary)' }}
+          >
+            <img
+              className="block w-full h-auto"
+              alt=""
+              src={getLayerLegendImageSrc(layer.name)}
+              loading="eager"
+              decoding="async"
+            />
+          </div>
+        ) : layer.icon ? (
+          <div>
+            <img
+              className="block h-8 w-8 object-contain opacity-90"
+              src={iconsMap[layer.icon]}
+              alt=""
+            />
+          </div>
+        ) : null}
+
+        <div className="flex flex-col gap-1 min-w-0">
+          <Flex align="center" gap="small" wrap="wrap">
+            <span className="text-lg font-heading-display mt-2 mb-1">
+              {layer.displayName || layer.name}
+            </span>
+            {layer.protectionLevel && layer.style && (
+              <InfrastructureBadge
+                infrastructure={getInfrastructureFromLayerName(layer.name)}
+                isDarkMode={isDarkMode}
+              >
+                {layer.protectionLevel === 'Alta' && <IconSignal3 />}
+                {layer.protectionLevel === 'Média' && <IconSignal2 />}
+                {layer.protectionLevel === 'Baixa' && <IconSignal1 />}
+                {layer.protectionLevel === 'Alta'
+                  ? 'Augsta'
+                  : layer.protectionLevel === 'Média'
+                    ? 'Vidēja'
+                    : layer.protectionLevel === 'Baixa'
+                      ? 'Zema'
+                      : layer.protectionLevel}{' '}
+                aizsardzība
+              </InfrastructureBadge>
+            )}
+          </Flex>
+
+          <Text className=" leading-normal !mb-0">{layer.description}</Text>
+        </div>
+
+        {!embedMode && openLayersLegendModal && sectionId && (
+          <Button
+            data-testid="layers-panel-popover-full-legend"
+            onClick={(e) => {
+              e.stopPropagation();
+              this.openLegend(sectionId);
+            }}
+          >
+            Lasīt vairāk
+          </Button>
+        )}
+      </div>
+    );
+  }
+
   render() {
     const { layers, embedMode } = this.props;
 
@@ -67,26 +166,11 @@ class LayersPanel extends Component {
 
     return (
       <>
-        {/* {
-                    IS_MOBILE &&
-                        <div
-                            id="layersPanelMobileButton"
-                            className={`
-                                p-4 border border-white border-opacity-20 rounded-full text-lg fixed
-                                ${this.state.collapsed ? 'collapsed' : 'expanded'}`}
-                            onClick={this.toggleMobileCollapse}
-                            style={{
-                                bottom: 30,
-                                left: 8,
-                            }}
-                        >
-                            <IconLayers/>
-                        </div>
-                } */}
         <div
           id="layersPanel"
           className={`
-                        fixed text-white p-2 rounded-xl
+                        fixed text-white rounded-xl
+                        p-2
                         ${IS_MOBILE && 'bg-black rounded-xl border border-white border-opacity-20 shadow-lg divide-y divide-white divide-opacity-10'}
                         ${IS_MOBILE && this.state.collapsed ? 'hidden ' : ''}
                         ${embedMode ? 'pointer-events-none ' : 'cursor-pointer '}
@@ -105,44 +189,12 @@ class LayersPanel extends Component {
               <Popover
                 placement="left"
                 key={l.name}
-                classNames={{ content: 'layers-panel-popover-content-inner' }}
-                content={
-                  <div className="layers-panel-popover-content">
-                    {l.type === 'way' && (
-                      <div className="layers-panel-popover__figure">
-                        <img
-                          className="layers-panel-popover__img"
-                          alt=""
-                          src={'/' + slugify(l.name) + '.png'}
-                        />
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-2xl mb-0 tracking-tight">{l.displayName || l.name}</h3>
-                      {l.protectionLevel && l.style && (
-                        <InfrastructureBadge
-                          infrastructure={getInfrastructureFromLayerName(l.name)}
-                          isDarkMode={this.props.isDarkMode}
-                        >
-                          {l.protectionLevel === 'Alta' && <IconSignal3 />}
-                          {l.protectionLevel === 'Média' && <IconSignal2 />}
-                          {l.protectionLevel === 'Baixa' && <IconSignal1 />}
-                          {l.protectionLevel === 'Alta'
-                            ? 'Augsta'
-                            : l.protectionLevel === 'Média'
-                              ? 'Vidēja'
-                              : l.protectionLevel === 'Baixa'
-                                ? 'Zema'
-                                : l.protectionLevel}{' '}
-                          aizsardzība
-                        </InfrastructureBadge>
-                      )}
-                    </div>
-
-                    {l.description}
-                  </div>
-                }
+                destroyOnHidden={IS_MOBILE}
+                styles={{
+                  container: { maxHeight: 'min(85vh, 560px)', overflow: 'auto' },
+                  content: { maxWidth: 'min(360px, calc(100vw - 24px))' },
+                }}
+                content={this.renderPopoverContent(l)}
               >
                 <div
                   className="flex rounded-md items-center justify-between px-2 py-1 hover:bg-black hover:bg-opacity-70"
@@ -193,5 +245,14 @@ class LayersPanel extends Component {
     );
   }
 }
+
+LayersPanel.propTypes = {
+  layers: PropTypes.array,
+  lengths: PropTypes.object,
+  onLayersChange: PropTypes.func.isRequired,
+  embedMode: PropTypes.bool,
+  isDarkMode: PropTypes.bool,
+  openLayersLegendModal: PropTypes.func,
+};
 
 export default LayersPanel;
