@@ -1176,24 +1176,27 @@ class App extends Component {
         this.currentOSMRequest = null;
       })
       .catch((e) => {
-        console.error(e);
         this.setState({
           loading: false,
         });
 
         appNotification.destroy();
 
-        // Check if the error is due to request abortion
+        // A superseded request (aborted because a newer one started) is normal
+        // control flow — not an error, and never a user-facing toast.
         if (e.message === 'Request aborted') {
           console.debug('OSM request was cancelled due to a new request');
-        } else if (!backgroundUpdate) {
+        } else {
+          console.error(e);
           // Only alarm the user on a foreground load. A failed background refresh
           // is silent — the cached data they're already looking at stays valid.
-          appNotification.error({
-            title: 'Kļūda',
-            description:
-              'Neizdevās ielādēt datus no OpenStreetMap. Lūdzu, mēģiniet vēlreiz vēlāk.',
-          });
+          if (!backgroundUpdate) {
+            appNotification.error({
+              title: 'Kļūda',
+              description:
+                'Neizdevās ielādēt datus no OpenStreetMap. Lūdzu, mēģiniet vēlreiz vēlāk.',
+            });
+          }
         }
 
         // Clear the current request reference

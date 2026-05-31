@@ -135,15 +135,15 @@ async function handleStatsList(req: Request): Promise<Response> {
  * different OSM client libs use different conventions.
  */
 const OVERPASS_UPSTREAM = 'https://overpass-api.de/api/interpreter';
-// Fallbacks tried in order when a server is transiently overloaded (429/5xx) or
-// unreachable. Public Overpass instances flake under load; rotating recovers
-// most failures transparently instead of surfacing a 502 to the browser.
-const OVERPASS_UPSTREAMS = [
-  OVERPASS_UPSTREAM,
-  'https://overpass.private.coffee/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
+// overpass-api.de is the reliable instance but transiently 429/5xx-throttles our
+// shared VPS IP under load. Retry it first (throttles usually clear in <1s), then
+// fall back to an alternate. Short per-attempt timeouts keep a dead server from
+// hanging the request. Full-city queries normally return in ~6-10s.
+const OVERPASS_ATTEMPTS: Array<{ url: string; timeoutMs: number }> = [
+  { url: OVERPASS_UPSTREAM, timeoutMs: 40_000 },
+  { url: OVERPASS_UPSTREAM, timeoutMs: 40_000 },
+  { url: 'https://overpass.kumi.systems/api/interpreter', timeoutMs: 20_000 },
 ];
-const OVERPASS_TIMEOUT_MS = 90_000;
 const OVERPASS_UA = 'velokarte/0.1 (+https://velokarte.pocs.dev)';
 
 const STREET_LAMP_STALE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -307,10 +307,10 @@ async function handleOverpass(req: Request): Promise<Response> {
   const body = 'data=' + encodeURIComponent(dataParam);
   let lastDetail = 'no upstream attempted';
 
-  for (let i = 0; i < OVERPASS_UPSTREAMS.length; i++) {
-    const upstream = OVERPASS_UPSTREAMS[i];
+  for (let i = 0; i < OVERPASS_ATTEMPTS.length; i++) {
+    const { url, timeoutMs } = OVERPASS_ATTEMPTS[i];
     try {
-      const upstreamRes = await fetch(upstream, {
+      const upstreamRes = await fetch(url, {
         method: 'POST',
         headers: {
           'User-Agent': OVERPASS_UA,
@@ -318,7 +318,7 @@ async function handleOverpass(req: Request): Promise<Response> {
           Accept: 'application/json',
         },
         body,
-        signal: AbortSignal.timeout(OVERPASS_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       });
 
       if (upstreamRes.ok) {
@@ -331,8 +331,8 @@ async function handleOverpass(req: Request): Promise<Response> {
         });
       }
 
-      // Non-transient client errors (e.g. 400 bad query) won't improve on
-      // another server — return immediately so the caller sees the real cause.
+      // Non-transient client errors (e.g. 400 bad query) won't improve on a
+      // retry/another server — return as-is so the caller sees the real cause.
       if (upstreamRes.status < 500 && upstreamRes.status !== 429) {
         const text = await upstreamRes.text().catch(() => '');
         return new Response(text || JSON.stringify({ error: 'overpass_upstream_error' }), {
@@ -341,17 +341,20 @@ async function handleOverpass(req: Request): Promise<Response> {
         });
       }
 
-      // Transient (429/5xx): drain and try the next server.
+      // Transient (429/5xx): drain, brief backoff, try the next attempt.
       await upstreamRes.arrayBuffer().catch(() => {});
-      lastDetail = `${upstream} -> ${upstreamRes.status}`;
-      console.warn(`[overpass-proxy] ${lastDetail}; trying next upstream`);
+      lastDetail = `${url} -> ${upstreamRes.status}`;
+      console.warn(`[overpass-proxy] ${lastDetail}; retrying`);
     } catch (err) {
-      lastDetail = `${upstream} -> ${String(err)}`;
-      console.warn(`[overpass-proxy] ${lastDetail}; trying next upstream`);
+      lastDetail = `${url} -> ${String(err)}`;
+      console.warn(`[overpass-proxy] ${lastDetail}; retrying`);
+    }
+    if (i < OVERPASS_ATTEMPTS.length - 1) {
+      await new Promise((r) => setTimeout(r, 500 * (i + 1)));
     }
   }
 
-  console.error('[overpass-proxy] all upstreams failed:', lastDetail);
+  console.error('[overpass-proxy] all attempts failed:', lastDetail);
   return json(
     { error: 'overpass_proxy_failed', detail: lastDetail },
     { status: 502 }
