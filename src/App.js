@@ -24,6 +24,7 @@ import {
 import { flyMapToCityFocus } from './Map.js';
 import { DirectionsProvider } from './contexts/DirectionsContext';
 import {
+  DEFAULT_AREA,
   DEFAULT_LAT,
   DEFAULT_LNG,
   DEFAULT_ZOOM,
@@ -138,7 +139,10 @@ class App extends Component {
     // Derive the initial area from the URL slug (for catalog cities) so that a page
     // load/refresh always reflects the slug rather than potentially stale localStorage.
     // For unknown cities, componentDidMount will resolve via Nominatim.
-    let initialArea = prev.area || '';
+    // Bare-root fresh visit (no saved state, no slug, no explicit viewport) defaults
+    // the viewport to Rīga (DEFAULT_LAT/LNG below), so default the area label to match —
+    // otherwise the city selector renders an empty "," until reverse-geocode resolves.
+    let initialArea = prev.area || (citySlug || hasExplicitLatLng ? '' : DEFAULT_AREA);
     if (citySlug) {
       const normalizedSlug = decodeURIComponent(citySlug).trim().toLowerCase();
       const canonicalSlug = getCanonicalCitySlug(normalizedSlug) || normalizedSlug;
