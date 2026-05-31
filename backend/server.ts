@@ -135,6 +135,15 @@ async function handleStatsList(req: Request): Promise<Response> {
  * different OSM client libs use different conventions.
  */
 const OVERPASS_UPSTREAM = 'https://overpass-api.de/api/interpreter';
+// Fallbacks tried in order when a server is transiently overloaded (429/5xx) or
+// unreachable. Public Overpass instances flake under load; rotating recovers
+// most failures transparently instead of surfacing a 502 to the browser.
+const OVERPASS_UPSTREAMS = [
+  OVERPASS_UPSTREAM,
+  'https://overpass.private.coffee/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+];
+const OVERPASS_TIMEOUT_MS = 90_000;
 const OVERPASS_UA = 'velokarte/0.1 (+https://velokarte.pocs.dev)';
 
 const STREET_LAMP_STALE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -295,31 +304,58 @@ async function handleOverpass(req: Request): Promise<Response> {
 
   if (!dataParam) return badRequest('missing_data');
 
-  try {
-    const upstreamRes = await fetch(OVERPASS_UPSTREAM, {
-      method: 'POST',
-      headers: {
-        'User-Agent': OVERPASS_UA,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-      },
-      body: 'data=' + encodeURIComponent(dataParam),
-    });
+  const body = 'data=' + encodeURIComponent(dataParam);
+  let lastDetail = 'no upstream attempted';
 
-    return new Response(upstreamRes.body, {
-      status: upstreamRes.status,
-      headers: {
-        'Content-Type':
-          upstreamRes.headers.get('Content-Type') || 'application/json',
-      },
-    });
-  } catch (err) {
-    console.error('[overpass-proxy] failed:', err);
-    return json(
-      { error: 'overpass_proxy_failed', detail: String(err) },
-      { status: 502 }
-    );
+  for (let i = 0; i < OVERPASS_UPSTREAMS.length; i++) {
+    const upstream = OVERPASS_UPSTREAMS[i];
+    try {
+      const upstreamRes = await fetch(upstream, {
+        method: 'POST',
+        headers: {
+          'User-Agent': OVERPASS_UA,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+        },
+        body,
+        signal: AbortSignal.timeout(OVERPASS_TIMEOUT_MS),
+      });
+
+      if (upstreamRes.ok) {
+        return new Response(upstreamRes.body, {
+          status: 200,
+          headers: {
+            'Content-Type':
+              upstreamRes.headers.get('Content-Type') || 'application/json',
+          },
+        });
+      }
+
+      // Non-transient client errors (e.g. 400 bad query) won't improve on
+      // another server — return immediately so the caller sees the real cause.
+      if (upstreamRes.status < 500 && upstreamRes.status !== 429) {
+        const text = await upstreamRes.text().catch(() => '');
+        return new Response(text || JSON.stringify({ error: 'overpass_upstream_error' }), {
+          status: upstreamRes.status,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Transient (429/5xx): drain and try the next server.
+      await upstreamRes.arrayBuffer().catch(() => {});
+      lastDetail = `${upstream} -> ${upstreamRes.status}`;
+      console.warn(`[overpass-proxy] ${lastDetail}; trying next upstream`);
+    } catch (err) {
+      lastDetail = `${upstream} -> ${String(err)}`;
+      console.warn(`[overpass-proxy] ${lastDetail}; trying next upstream`);
+    }
   }
+
+  console.error('[overpass-proxy] all upstreams failed:', lastDetail);
+  return json(
+    { error: 'overpass_proxy_failed', detail: lastDetail },
+    { status: 502 }
+  );
 }
 
 Bun.serve({

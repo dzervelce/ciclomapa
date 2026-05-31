@@ -1186,12 +1186,9 @@ class App extends Component {
         // Check if the error is due to request abortion
         if (e.message === 'Request aborted') {
           console.debug('OSM request was cancelled due to a new request');
-          // notification.warning({
-          //     message: 'OSM Request Aborted',
-          //     description: 'OSM request was cancelled due to a new request.',
-          //     duration: 2
-          // });
-        } else {
+        } else if (!backgroundUpdate) {
+          // Only alarm the user on a foreground load. A failed background refresh
+          // is silent — the cached data they're already looking at stays valid.
           appNotification.error({
             title: 'Kļūda',
             description:
