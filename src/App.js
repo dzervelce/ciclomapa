@@ -1193,9 +1193,9 @@ class App extends Component {
           // });
         } else {
           appNotification.error({
-            title: 'Ops',
+            title: 'Kļūda',
             description:
-              'O OSM está mal humorado neste momento e não conseguimos acessar os dados. Tente novamente mais tarde.',
+              'Neizdevās ielādēt datus no OpenStreetMap. Lūdzu, mēģiniet vēlreiz vēlāk.',
           });
         }
 
@@ -1233,6 +1233,8 @@ class App extends Component {
                 geoJson: data.geoJson,
                 lengths: data.lengths,
                 dataUpdatedAt: new Date(data.updatedAt),
+                // Clear any spinner left true by a superseded/failed OSM request.
+                loading: false,
               });
             } else {
               console.debug(
@@ -1249,11 +1251,9 @@ class App extends Component {
           })
           .catch((e) => {
             console.error(e);
-            // notification['error']({
-            //     message: 'Erro',
-            //     description:
-            //         'Ocorreu um erro ao acessar o banco de dados.',
-            // });
+            // Cache read / length calc failed — clear the spinner so the UI doesn't
+            // hang on "Ielādē datus...".
+            this.setState({ loading: false });
           });
       }
     } else {

@@ -289,10 +289,10 @@ class OSMController {
             }
           })
           .catch((e) => {
-            console.error('Deu erro! Saca só:', e);
+            console.error('Nominatim error:', e);
             appNotification.error({
-              title: 'Erro',
-              description: 'Ops, erro na API do Nominatim. Abra o console para ver mais detalhes.',
+              title: 'Kļūda',
+              description: 'Neizdevās noteikt pilsētas robežas (Nominatim). Mēģiniet vēlreiz vēlāk.',
             });
 
             reject(e);
@@ -304,8 +304,14 @@ class OSMController {
   static getData(constraints) {
     let abortController = new AbortController();
     let isAborted = false;
+    // Capture `reject` so promise.abort() (defined outside this executor) can
+    // settle the promise. The $.getJSON XHR isn't wired to abortController, so
+    // without this an aborted/failed request orphans the promise forever and the
+    // caller's `loading` state never clears.
+    let rejectPromise;
 
     const promise = new Promise((resolve, reject) => {
+      rejectPromise = reject;
       let geoJson;
 
       this.getAreaId(constraints.area)
@@ -383,6 +389,23 @@ class OSMController {
             }).fail((e) => {
               if (e.statusText !== 'abort' && !isAborted) {
                 console.error(`[SERVER #${i}] Error:`, e);
+
+                // Settle the promise once every non-aborted request has failed, so
+                // the caller (App.getDataFromOSM) clears `loading` instead of
+                // hanging forever on an Overpass 4xx/5xx/timeout.
+                let isLastRemainingRequest = true;
+                for (let r = 0; r < requests.length; r++) {
+                  if (r !== i && requests[r].status === undefined) {
+                    isLastRemainingRequest = false;
+                  }
+                }
+                if (isLastRemainingRequest) {
+                  reject(
+                    new Error(
+                      `Overpass request failed: ${e && e.status ? e.status : 'network error'}`
+                    )
+                  );
+                }
               }
             });
           }
@@ -399,6 +422,8 @@ class OSMController {
     promise.abort = () => {
       console.debug('OSM request aborted');
       isAborted = true;
+      // Settle immediately so the superseded request's caller stops waiting.
+      if (rejectPromise) rejectPromise(new Error('Request aborted'));
       abortController.abort();
     };
 
