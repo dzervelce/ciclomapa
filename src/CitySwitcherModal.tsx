@@ -394,12 +394,12 @@ function getStatsDocIdTryOrder(cityObj: StatsCityLike | null | undefined): strin
   const canonicalSlug = getCanonicalCitySlug(cityObj.canonicalSlug || cityObj.slug || '');
   const def = canonicalSlug ? getPredefinedCitySlugDefinition(canonicalSlug) : null;
 
+  push(def?.staticLocation?.areaLabel);
   push(canonicalSlug);
   push(cityObj.areaLabel);
   push(cityObj.name);
   push(cityObj.meta ? `${cityObj.name}, ${cityObj.meta}` : '');
   push(def?.query);
-  push(def?.staticLocation?.areaLabel);
 
   return ordered;
 }

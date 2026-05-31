@@ -988,6 +988,62 @@ const PREDEFINED_CITY_CATALOG = {
       lng: 23.15,
     },
   },
+
+  // Velokarte: Riga-region suburbs (non-catalog previously; added to stabilise storage slugs)
+  adazi: {
+    query: 'Ādaži',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Ādaži, Ādažu novads, Latvija',
+      lat: 57.0778,
+      lng: 24.3228,
+    },
+  },
+  babite: {
+    query: 'Babīte',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Babīte, Mārupes novads, Latvija',
+      lat: 56.9283,
+      lng: 23.9472,
+    },
+  },
+  kekava: {
+    query: 'Ķekava',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Ķekava, Ķekavas novads, Latvija',
+      lat: 56.8272,
+      lng: 24.2122,
+    },
+  },
+  marupe: {
+    query: 'Mārupe',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Mārupe, Mārupes novads, Latvija',
+      lat: 56.8967,
+      lng: 24.0486,
+    },
+  },
+  salaspils: {
+    query: 'Salaspils',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Salaspils, Salaspils novads, Latvija',
+      lat: 56.8597,
+      lng: 24.3547,
+    },
+  },
+  saulkrasti: {
+    query: 'Saulkrasti',
+    countrycodes: ['lv'],
+    staticLocation: {
+      areaLabel: 'Saulkrasti, Saulkrastu novads, Latvija',
+      lat: 57.2564,
+      lng: 24.4197,
+    },
+  },
 };
 
 export function getPredefinedCitySlugDefinition(slug) {
