@@ -5,7 +5,6 @@ import * as serviceWorkerRegistration from './serviceWorkerRegistration';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { getCssCustomProperties } from './config/design-tokens.js';
 import { IS_PROD } from './config/constants.js';
-import { SpeedInsights } from '@vercel/speed-insights/react';
 // Velokarte: bootstrap i18n (LV default, EN fallback) before any UI renders.
 import './i18n';
 
@@ -104,7 +103,6 @@ function AppRoutes() {
 root.render(
   <Router>
     <AppRoutes />
-    <SpeedInsights />
   </Router>
 );
 
