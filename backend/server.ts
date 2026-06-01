@@ -284,6 +284,101 @@ async function handleStreetLamps(slug: string, req: Request): Promise<Response> 
   }
 }
 
+// IPv6 source-address rotation. When OVERPASS_BIND_PREFIX (a /64 CIDR) is set in
+// /etc/velokarte/env, each upstream attempt egresses from a fresh random address
+// in that /64, so overpass-api.de's per-IP rate limiting can't accumulate against
+// a single address. Requires the AnyIP setup applied by
+// infra/systemd/velokarte-anyip.service:
+//   sysctl -w net.ipv6.ip_nonlocal_bind=1
+//   ip -6 route add local <prefix> dev lo
+// Bun's fetch/node:net silently ignore localAddress, so the only way to bind a
+// source address is to shell out to curl --interface. When the var is unset, the
+// proxy uses a plain fetch and behaves byte-identically to before.
+const OVERPASS_BIND_PREFIX = process.env.OVERPASS_BIND_PREFIX?.trim();
+
+/** Pick a random host address inside an IPv6 /64 CIDR (handles '::' compression). */
+function randomAddrInPrefix64(cidr: string): string {
+  const addrPart = cidr.split('/')[0];
+  const toGroups = (s: string) => (s ? s.split(':').map((h) => parseInt(h || '0', 16)) : []);
+  const halves = addrPart.split('::');
+  let groups: number[];
+  if (halves.length === 2) {
+    const left = toGroups(halves[0]);
+    const right = toGroups(halves[1]);
+    groups = [...left, ...Array(8 - left.length - right.length).fill(0), ...right];
+  } else {
+    groups = toGroups(addrPart);
+  }
+  if (groups.length !== 8) throw new Error(`Cannot parse IPv6 prefix: ${addrPart}`);
+  let host: number[];
+  do {
+    host = Array.from({ length: 4 }, () => Math.floor(Math.random() * 0x10000));
+  } while (host.every((g) => g === 0) || host.every((g) => g === 0xffff));
+  return [...groups.slice(0, 4), ...host].map((g) => g.toString(16)).join(':');
+}
+
+interface CurlResult {
+  curlExit: number;
+  status: number;
+  body: Uint8Array;
+}
+
+/**
+ * One Overpass attempt via curl, optionally binding a source address (the only
+ * way to rotate the source IP since Bun ignores localAddress). The status code
+ * is emitted to stderr via `-w '%{stderr}%{http_code}'` so stdout stays pure
+ * body. The whole body is buffered (the retry/passthrough decision needs the
+ * status, which curl only reports after the transfer completes).
+ */
+async function overpassViaCurl(
+  url: string,
+  formBody: string,
+  timeoutMs: number,
+  bindAddr?: string
+): Promise<CurlResult> {
+  const args = [
+    '--silent',
+    '--compressed',
+    '--max-time',
+    String(Math.ceil(timeoutMs / 1000)),
+    '-X',
+    'POST',
+    '--data-binary',
+    '@-',
+    '-H',
+    `User-Agent: ${OVERPASS_UA}`,
+    '-H',
+    'Accept: application/json',
+    '-H',
+    'Content-Type: application/x-www-form-urlencoded',
+    '--write-out',
+    '%{stderr}HTTPSTATUS:%{http_code}',
+    url,
+  ];
+  if (bindAddr) args.push('-6', '--interface', bindAddr);
+
+  const proc = Bun.spawn(['curl', ...args], {
+    stdin: new TextEncoder().encode(formBody),
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  // Drain both streams concurrently (consuming both avoids any pipe-buffer
+  // deadlock on large bodies), then await exit.
+  const [bodyBuf, statusText] = await Promise.all([
+    new Response(proc.stdout).arrayBuffer(),
+    new Response(proc.stderr).text(),
+  ]);
+  const curlExit = await proc.exited;
+  // Status is emitted to stderr with a sentinel (`HTTPSTATUS:NNN`) so it can't be
+  // confused with any curl diagnostic text. Take the last occurrence.
+  const matches = [...statusText.matchAll(/HTTPSTATUS:(\d{3})/g)];
+  const status = matches.length ? parseInt(matches[matches.length - 1][1], 10) : 0;
+  if (curlExit === 0 && status === 0) {
+    console.warn('[overpass-proxy] curl exited 0 but no HTTP status parsed from stderr');
+  }
+  return { curlExit, status, body: new Uint8Array(bodyBuf) };
+}
+
 async function handleOverpass(req: Request): Promise<Response> {
   let dataParam: string | null = null;
 
@@ -306,6 +401,54 @@ async function handleOverpass(req: Request): Promise<Response> {
 
   const body = 'data=' + encodeURIComponent(dataParam);
   let lastDetail = 'no upstream attempted';
+
+  // Preferred path: rotate the source IPv6 per attempt via curl (only when a /64
+  // is configured). NEVER put the bound address into lastDetail or any
+  // client-visible response — it would leak our infrastructure /64.
+  if (OVERPASS_BIND_PREFIX) {
+    for (let i = 0; i < OVERPASS_ATTEMPTS.length; i++) {
+      const { url, timeoutMs } = OVERPASS_ATTEMPTS[i];
+      let bindAddr: string;
+      try {
+        bindAddr = randomAddrInPrefix64(OVERPASS_BIND_PREFIX);
+      } catch (e) {
+        console.error('[overpass-proxy] invalid OVERPASS_BIND_PREFIX; using direct fetch:', e);
+        break;
+      }
+      try {
+        const r = await overpassViaCurl(url, body, timeoutMs, bindAddr);
+        if (r.curlExit === 0 && r.status >= 200 && r.status < 300) {
+          // All Overpass queries we issue are [out:json], so the body is JSON.
+          return new Response(r.body, {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        // Real client error (e.g. 400 bad query): a different source/server
+        // won't help — return it as-is.
+        if (r.curlExit === 0 && r.status >= 400 && r.status < 500 && r.status !== 429) {
+          const text = new TextDecoder().decode(r.body);
+          return new Response(text || JSON.stringify({ error: 'overpass_upstream_error' }), {
+            status: r.status,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        // Transient (429/5xx) or curl failure (timeout/bind/network): retry.
+        lastDetail =
+          r.curlExit !== 0 ? `${url} -> curl exit ${r.curlExit}` : `${url} -> ${r.status}`;
+        console.warn(`[overpass-proxy] (rotated) ${lastDetail}; retrying`);
+      } catch (err) {
+        lastDetail = `${url} -> ${String(err)}`;
+        console.warn(`[overpass-proxy] (rotated) ${lastDetail}; retrying`);
+      }
+      if (i < OVERPASS_ATTEMPTS.length - 1) {
+        await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+      }
+    }
+    // Rotation exhausted or unavailable — fall through to a plain fetch so we are
+    // never worse off than before if IPv6 binding ever breaks.
+    console.warn('[overpass-proxy] rotated attempts failed; falling back to direct fetch');
+  }
 
   for (let i = 0; i < OVERPASS_ATTEMPTS.length; i++) {
     const { url, timeoutMs } = OVERPASS_ATTEMPTS[i];

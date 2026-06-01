@@ -16,6 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Guard — no IPv6 literals in repo
+        run: sh scripts/check-no-ipv6.sh
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest

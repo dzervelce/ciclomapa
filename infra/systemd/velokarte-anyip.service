@@ -1,0 +1,25 @@
+[Unit]
+# Enables IPv6 source-address rotation for the Overpass proxy: makes the whole
+# OVERPASS_BIND_PREFIX /64 locally bindable so backend/server.ts can curl
+# --interface a fresh address per request and dodge overpass-api.de per-IP
+# throttling. No-op unless OVERPASS_BIND_PREFIX is set in /etc/velokarte/env.
+Description=Velokarte AnyIP /64 (IPv6 source rotation for Overpass)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Dash: tolerate a missing env file. The prefix never lives in the repo.
+EnvironmentFile=-/etc/velokarte/env
+# Both pieces are required (verified on the box): nonlocal_bind to permit the
+# bind(), and the AnyIP local route so return traffic for the /64 is accepted.
+# net.ipv6.ip_nonlocal_bind is a global sysctl (not interface-scoped); that is
+# acceptable on this single-purpose VPS.
+ExecStart=/bin/sh -c 'if [ -n "${OVERPASS_BIND_PREFIX:-}" ]; then sysctl -w net.ipv6.ip_nonlocal_bind=1 && ip -6 route replace local "$OVERPASS_BIND_PREFIX" dev lo; else echo "OVERPASS_BIND_PREFIX unset; AnyIP not configured"; fi'
+ExecStop=/bin/sh -c 'if [ -n "${OVERPASS_BIND_PREFIX:-}" ]; then ip -6 route del local "$OVERPASS_BIND_PREFIX" dev lo 2>/dev/null || true; fi'
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
