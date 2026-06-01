@@ -135,21 +135,22 @@ async function handleStatsList(req: Request): Promise<Response> {
  * different OSM client libs use different conventions.
  */
 const OVERPASS_UPSTREAM = 'https://overpass-api.de/api/interpreter';
-// Reliability notes (measured): the heavy full-city query (~5.5MB) is ONLY served
-// fast by overpass-api.de (~10-20s) — and even it intermittently 504/429s under
-// global load (~half the time), roughly independently per request, so retrying with
-// a fresh source IP is the real lever (3 rotated shots ≈ high success). No usable
-// mirror exists for the heavy query: private.coffee (= kumi alias) 504s on it
-// (>100s), and regional instances (osm.ch / openstreetmap.fr) return EMPTY for
-// area() queries — they must NEVER be added (empty looks like "success"). We keep
-// private.coffee LAST with a short timeout purely as a different-backend backstop
-// for light queries / a full overpass-api.de outage. When OVERPASS_BIND_PREFIX is
-// set, every attempt rotates the source IPv6.
+// Reliability notes (measured): every /api/overpass request the frontend makes is
+// the heavy full-city query (~5.5MB). ONLY overpass-api.de serves that fast
+// (~10-20s); it intermittently 504/429s under global load (~half the time), roughly
+// independently per request — so retrying with a fresh source IP is the only real
+// lever (4 rotated shots ≈ ~94% on a single load). There is NO usable mirror for the
+// heavy query: private.coffee (= kumi alias) 504s on it (>100s, so it only added
+// latency), and regional instances (osm.ch / openstreetmap.fr) return EMPTY for
+// area() queries — they must NEVER be added (an empty body looks like "success").
+// When OVERPASS_BIND_PREFIX is set, every attempt rotates the source IPv6. Genuine
+// reliability needs a self-hosted Latvia Overpass — this is the best public-only
+// interim.
 const OVERPASS_ATTEMPTS: Array<{ url: string; timeoutMs: number }> = [
   { url: OVERPASS_UPSTREAM, timeoutMs: 40_000 },
   { url: OVERPASS_UPSTREAM, timeoutMs: 40_000 },
   { url: OVERPASS_UPSTREAM, timeoutMs: 40_000 },
-  { url: 'https://overpass.private.coffee/api/interpreter', timeoutMs: 30_000 },
+  { url: OVERPASS_UPSTREAM, timeoutMs: 40_000 },
 ];
 const OVERPASS_UA = 'velokarte/0.1 (+https://velokarte.pocs.dev)';
 
