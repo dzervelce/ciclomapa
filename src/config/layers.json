@@ -203,7 +203,12 @@
       ["cycleway:left", "share_busway"],
       ["cycleway:right", "share_busway"],
       ["cycleway:both", "share_busway"],
-      ["cycleway", "opposite_share_busway"]
+      ["cycleway", "opposite_share_busway"],
+      [
+        ["oneway", "yes"],
+        ["oneway:bicycle", "no"],
+        ["oneway:bus", "no"]
+      ]
     ],
     "style": {
       "lineColor": "#A7C957",

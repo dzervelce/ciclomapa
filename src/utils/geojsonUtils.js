@@ -71,39 +71,12 @@ export function computeTypologies(data, layers) {
         .forEach((layer) => {
           let match = false;
           layer.filters.forEach((filter) => {
-            let partsToMatch;
-            if (typeof filter[0] === 'object') {
-              partsToMatch = [false, false];
-            } else {
-              partsToMatch = [false];
-            }
+            // A filter entry is either a single [tag, value] pair or an AND group
+            // of pairs ([[t1,v1],[t2,v2],...]); for an AND group every pair must match.
+            const conditions = typeof filter[0] === 'object' ? filter : [filter];
+            const allMatch = conditions.every(([key, value]) => feature.properties[key] === value);
 
-            Object.keys(feature.properties).forEach((propertyKey) => {
-              if (typeof filter[0] === 'object') {
-                if (
-                  propertyKey === filter[0][0] &&
-                  feature.properties[propertyKey] === filter[0][1]
-                ) {
-                  partsToMatch[0] = true;
-                }
-
-                if (
-                  propertyKey === filter[1][0] &&
-                  feature.properties[propertyKey] === filter[1][1]
-                ) {
-                  partsToMatch[1] = true;
-                }
-              } else {
-                if (propertyKey === filter[0] && feature.properties[propertyKey] === filter[1]) {
-                  partsToMatch[0] = true;
-                }
-              }
-            });
-
-            if (
-              (typeof filter[0] === 'object' && partsToMatch[0] && partsToMatch[1]) ||
-              partsToMatch[0]
-            ) {
+            if (allMatch) {
               match = true;
 
               // "Proibido" layer should have priority over the rest

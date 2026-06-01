@@ -990,14 +990,16 @@ class App extends Component {
   isDataFresh(lastUpdatedAt) {
     const now = new Date();
     const dataLastUpdate = new Date(lastUpdatedAt);
-    const ageInDays = Math.round((now - dataLastUpdate) / (24 * 60 * 60 * 1000));
+    // Compare fractional age — don't Math.round first, or OSM_DATA_MAX_AGE_DAYS
+    // (~1 h) collapses to a whole-day threshold and data stays "fresh" for ~12 h.
+    const ageInDays = (now - dataLastUpdate) / (24 * 60 * 60 * 1000);
     const isFresh = ageInDays < OSM_DATA_MAX_AGE_DAYS;
 
     if (isFresh) {
-      console.debug(`Database data is fresh (${ageInDays} days old).`);
+      console.debug(`Database data is fresh (${ageInDays.toFixed(2)} days old).`);
     } else {
       console.debug(
-        `Database data is stale (${ageInDays} days old), fetching fresh data from OSM...`
+        `Database data is stale (${ageInDays.toFixed(2)} days old), fetching fresh data from OSM...`
       );
     }
 
