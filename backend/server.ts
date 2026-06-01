@@ -135,14 +135,21 @@ async function handleStatsList(req: Request): Promise<Response> {
  * different OSM client libs use different conventions.
  */
 const OVERPASS_UPSTREAM = 'https://overpass-api.de/api/interpreter';
-// overpass-api.de is the reliable instance but transiently 429/5xx-throttles our
-// shared VPS IP under load. Retry it first (throttles usually clear in <1s), then
-// fall back to an alternate. Short per-attempt timeouts keep a dead server from
-// hanging the request. Full-city queries normally return in ~6-10s.
+// Reliability notes (measured): the heavy full-city query (~5.5MB) is ONLY served
+// fast by overpass-api.de (~10-20s) — and even it intermittently 504/429s under
+// global load (~half the time), roughly independently per request, so retrying with
+// a fresh source IP is the real lever (3 rotated shots ≈ high success). No usable
+// mirror exists for the heavy query: private.coffee (= kumi alias) 504s on it
+// (>100s), and regional instances (osm.ch / openstreetmap.fr) return EMPTY for
+// area() queries — they must NEVER be added (empty looks like "success"). We keep
+// private.coffee LAST with a short timeout purely as a different-backend backstop
+// for light queries / a full overpass-api.de outage. When OVERPASS_BIND_PREFIX is
+// set, every attempt rotates the source IPv6.
 const OVERPASS_ATTEMPTS: Array<{ url: string; timeoutMs: number }> = [
   { url: OVERPASS_UPSTREAM, timeoutMs: 40_000 },
   { url: OVERPASS_UPSTREAM, timeoutMs: 40_000 },
-  { url: 'https://overpass.kumi.systems/api/interpreter', timeoutMs: 20_000 },
+  { url: OVERPASS_UPSTREAM, timeoutMs: 40_000 },
+  { url: 'https://overpass.private.coffee/api/interpreter', timeoutMs: 30_000 },
 ];
 const OVERPASS_UA = 'velokarte/0.1 (+https://velokarte.pocs.dev)';
 
@@ -406,6 +413,10 @@ async function handleOverpass(req: Request): Promise<Response> {
   // is configured). NEVER put the bound address into lastDetail or any
   // client-visible response — it would leak our infrastructure /64.
   if (OVERPASS_BIND_PREFIX) {
+    // Did any rotated attempt actually reach Overpass (get an HTTP response)? If so,
+    // a failure is Overpass being overloaded, not an IP/binding problem — and the
+    // direct-fetch fallback (same backends, default IP) won't help, so we skip it.
+    let sawHttpResponse = false;
     for (let i = 0; i < OVERPASS_ATTEMPTS.length; i++) {
       const { url, timeoutMs } = OVERPASS_ATTEMPTS[i];
       let bindAddr: string;
@@ -417,6 +428,7 @@ async function handleOverpass(req: Request): Promise<Response> {
       }
       try {
         const r = await overpassViaCurl(url, body, timeoutMs, bindAddr);
+        if (r.status > 0) sawHttpResponse = true;
         if (r.curlExit === 0 && r.status >= 200 && r.status < 300) {
           // All Overpass queries we issue are [out:json], so the body is JSON.
           return new Response(r.body, {
@@ -445,9 +457,16 @@ async function handleOverpass(req: Request): Promise<Response> {
         await new Promise((r) => setTimeout(r, 500 * (i + 1)));
       }
     }
-    // Rotation exhausted or unavailable — fall through to a plain fetch so we are
-    // never worse off than before if IPv6 binding ever breaks.
-    console.warn('[overpass-proxy] rotated attempts failed; falling back to direct fetch');
+    if (sawHttpResponse) {
+      // Reached Overpass but it failed (429/5xx/504) on every rotated source — it's
+      // overloaded, not an IP issue. A direct fetch hits the same backends, so don't
+      // double the latency; surface the failure now.
+      console.error('[overpass-proxy] all rotated attempts failed:', lastDetail);
+      return json({ error: 'overpass_proxy_failed', detail: lastDetail }, { status: 502 });
+    }
+    // No HTTP response on any attempt (curl/bind/network failure) — IPv6 binding may
+    // be broken; fall back to a plain fetch from the default address.
+    console.warn('[overpass-proxy] rotation produced no HTTP response; falling back to direct fetch');
   }
 
   for (let i = 0; i < OVERPASS_ATTEMPTS.length; i++) {
